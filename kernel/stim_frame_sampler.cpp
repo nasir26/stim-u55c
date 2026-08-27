@@ -30,30 +30,21 @@ namespace stim_u55c {
 
 namespace {
 
-inline ap_uint<SHOTS> draw_flip_mask(int instruction_index, uint32_t threshold, uint32_t key0, uint32_t key1) {
-    ap_uint<SHOTS> mask = 0;
-DRAW_LANES:
-    for (int lane = 0; lane < SHOTS; lane++) {
-#pragma HLS unroll
-        Philox4x32Result r = philox4x32_10(static_cast<uint32_t>(instruction_index), static_cast<uint32_t>(lane), 0,
-                                            0, key0, key1);
-        if (r.w0 < threshold) {
-            mask[lane] = 1;
-        }
-    }
-    return mask;
-}
-
-// DEPOLARIZE1/2's categorical choice needs its own per-lane word1, not
-// just lane 0's -- this variant returns both the fire mask and, packed
-// alongside it via out-parameters, the per-lane word1 % modulus value
-// needed to pick which Pauli(s) apply. Kept separate from
-// draw_flip_mask (used by the single-qubit X/Y/Z noise ops, which only
-// ever need word0) to keep that hot path simple.
-inline void draw_categorical(int instruction_index, uint32_t threshold, uint32_t key0, uint32_t key1,
-                              uint32_t modulus, ap_uint<SHOTS> &active_mask, uint8_t which[SHOTS]) {
+// One shared draw for every noise opcode -- X/Y/Z only need `active_mask`
+// (word0 vs. threshold), DEPOLARIZE1/2 additionally need `which[]` (word1
+// mod a category count) to pick which Pauli(s) apply, but it's the same
+// per-lane Philox4x32-10 bank either way. This used to be two separate
+// functions (draw_flip_mask, draw_categorical); synthesis showed that
+// meant two full 64-lane/10-round-unrolled Philox banks in hardware --
+// 84% of the kernel's total LUT count between them, over budget on a
+// single SLR -- purely because they were textually different functions
+// HLS had no basis to share hardware between. One function called from
+// all three noise cases lets HLS's ordinary mutually-exclusive-branch
+// resource sharing do that consolidation instead.
+inline void draw_noise(int instruction_index, uint32_t threshold, uint32_t key0, uint32_t key1, uint32_t modulus,
+                        ap_uint<SHOTS> &active_mask, uint8_t which[SHOTS]) {
     active_mask = 0;
-DRAW_CATEGORICAL_LANES:
+DRAW_NOISE_LANES:
     for (int lane = 0; lane < SHOTS; lane++) {
 #pragma HLS unroll
         Philox4x32Result r = philox4x32_10(static_cast<uint32_t>(instruction_index), static_cast<uint32_t>(lane), 0,
@@ -78,6 +69,15 @@ inline void depolarize2_combo(uint8_t index, bool &a_x, bool &a_z, bool &b_x, bo
 
 }  // namespace
 
+}  // namespace stim_u55c
+
+// stim_frame_sampler itself is deliberately NOT inside namespace
+// stim_u55c -- see stim_frame_sampler.hpp for why. `using namespace`
+// brings every other kernel symbol (FrameStore, gate_h, Instruction, the
+// OPCODE_* constants, ...) into scope here without having to qualify
+// each one individually in the function body below.
+using namespace stim_u55c;
+
 // No reference/noiseless measurement sample is passed in, and none is
 // needed: a detector or observable's fold value is `actual XOR
 // reference`, i.e. the frame's own deviation, and the reference term
@@ -88,6 +88,24 @@ inline void depolarize2_combo(uint8_t index, bool &a_x, bool &a_z, bool &b_x, bo
 void stim_frame_sampler(const Instruction *instructions, int num_instructions, uint32_t seed_lo, uint32_t seed_hi,
                          ap_uint<SHOTS> detector_out[NUM_DETECTORS_MAX],
                          ap_uint<SHOTS> observable_out[NUM_OBSERVABLES_MAX]) {
+    // Logical AXI grouping only -- actual HBM bank assignment is a
+    // connectivity.cfg concern (host/, Phase 4), generated rather than
+    // handwritten per the project brief. gmem0/gmem1 split mirrors the
+    // brief's own connectivity.cfg example (instr_stream and
+    // detector_out on separate HBM pseudo-channels).
+#pragma HLS INTERFACE m_axi port = instructions offset = slave bundle = gmem0 depth = 1048576
+#pragma HLS INTERFACE m_axi port = detector_out offset = slave bundle = gmem1 depth = NUM_DETECTORS_MAX
+#pragma HLS INTERFACE m_axi port = observable_out offset = slave bundle = gmem1 depth = NUM_OBSERVABLES_MAX
+    // No explicit bundle names on the s_axilite ports below: each m_axi
+    // port above also gets an auto-generated s_axilite offset register,
+    // and Vitis kernel mode requires every s_axilite port (ours and
+    // those auto-generated ones) to land in the same control bundle --
+    // naming one explicitly here just fights that default.
+#pragma HLS INTERFACE s_axilite port = num_instructions
+#pragma HLS INTERFACE s_axilite port = seed_lo
+#pragma HLS INTERFACE s_axilite port = seed_hi
+#pragma HLS INTERFACE s_axilite port = return
+
     FrameStore fs;
     fs.reset_all();
     DetectorFold fold;
@@ -147,7 +165,9 @@ INSTRUCTION_LOOP:
             case OPCODE_NOISE_X:
             case OPCODE_NOISE_Y:
             case OPCODE_NOISE_Z: {
-                ap_uint<SHOTS> flip = draw_flip_mask(i, instr.prob_threshold, seed_lo, seed_hi);
+                ap_uint<SHOTS> flip;
+                uint8_t unused_which[SHOTS];
+                draw_noise(i, instr.prob_threshold, seed_lo, seed_hi, 3, flip, unused_which);
                 if (instr.opcode != OPCODE_NOISE_Z) {
                     fs.x[a] ^= flip;
                 }
@@ -159,7 +179,7 @@ INSTRUCTION_LOOP:
             case OPCODE_NOISE_DEPOLARIZE1: {
                 ap_uint<SHOTS> active;
                 uint8_t which[SHOTS];
-                draw_categorical(i, instr.prob_threshold, seed_lo, seed_hi, 3, active, which);
+                draw_noise(i, instr.prob_threshold, seed_lo, seed_hi, 3, active, which);
                 ap_uint<SHOTS> flip_x = 0, flip_z = 0;
             DEPOL1_LANES:
                 for (int lane = 0; lane < SHOTS; lane++) {
@@ -177,7 +197,7 @@ INSTRUCTION_LOOP:
             case OPCODE_NOISE_DEPOLARIZE2: {
                 ap_uint<SHOTS> active;
                 uint8_t which[SHOTS];
-                draw_categorical(i, instr.prob_threshold, seed_lo, seed_hi, 15, active, which);
+                draw_noise(i, instr.prob_threshold, seed_lo, seed_hi, 15, active, which);
                 ap_uint<SHOTS> flip_ax = 0, flip_az = 0, flip_bx = 0, flip_bz = 0;
             DEPOL2_LANES:
                 for (int lane = 0; lane < SHOTS; lane++) {
@@ -213,5 +233,3 @@ WRITE_OBSERVABLES:
         observable_out[o] = fold.observables[o];
     }
 }
-
-}  // namespace stim_u55c

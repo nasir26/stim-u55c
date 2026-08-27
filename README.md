@@ -4,7 +4,9 @@ FPGA-accelerated, [Stim](https://github.com/quantumlib/Stim)-compatible bulk
 sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
-**Status: Phase 2 (HLS kernel, C-sim) complete. No hardware build yet.**
+**Status: Phase 3 in progress — real HLS synthesis and RTL cosimulation
+passing (Fmax 382 MHz, all resource classes under 70%); II=1 instruction
+layering not yet done. No hardware build yet.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -93,9 +95,26 @@ next phase, and nothing is pushed, until the current gate is met.
   one Python list (`kernel/generate_headers.py`) so that class of bug is
   ruled out rather than re-reviewed. "sw_emu" here means this C-sim, not
   an actual `v++ -t sw_emu` run — that needs `host/`, which is Phase 4.
-- **Phase 3 — hw_emu + synthesis.** II=1 within instruction layers. Gate:
-  hw_emu bit-exact, estimated Fmax >= 250 MHz, resource usage under 70% of
-  any single class.
+- **Phase 3 — hw_emu + synthesis.** *(partially done)* Real `vitis_hls`
+  C-synthesis of the kernel: estimated Fmax 382.44 MHz (target 300, floor
+  250), all resource classes under 70% even at the tighter SLR-relative
+  reading (LUT 49%, DSP 31%, FF 20%, BRAM 4%, URAM 0%) — see
+  `docs/utilization.md`. C/RTL cosimulation (`cosim_design`, real XSIM
+  RTL simulation) **passes**, independently re-checked against the soft
+  model rather than just trusted: the synthesized RTL's actual output is
+  bit-identical to `softmodel/kernel_replay.py`, which chains with Tier 2
+  (C-sim matches the soft model) into soft model == C-sim == synthesized
+  RTL. One real finding en route: the first synthesis pass put SLR LUT at
+  83% (over budget) because two noise-drawing functions each fully
+  unrolled their own 64-lane Philox bank with no hardware shared between
+  them; merging them into one function let HLS's normal
+  mutually-exclusive-branch sharing consolidate it (DSP 1920 -> 960, LUT
+  361,185 -> 217,052) — see `docs/utilization.md` for the full account.
+  **Not done:** II=1 within instruction layers (project brief section
+  3.1) — `INSTRUCTION_LOOP` is currently unpipelined, correct but not
+  throughput-competitive; needs a host-side hazard-free scheduler this
+  phase deliberately deferred, same as Phase 2 did. This is what's left
+  before Phase 3's gate, as stated in the phased plan, is fully met.
 - **Phase 4 — hardware bring-up, Mode A (bulk throughput).** Gate: all five
   validation tiers pass on real hardware; shots/sec benchmark vs. CPU Stim
   committed to `bench/results/`.

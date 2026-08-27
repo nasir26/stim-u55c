@@ -16,14 +16,27 @@ HLS C++ kernel sources and the ISA that drives them.
   docstring).
 - `instruction.hpp` — the in-memory instruction record and binary reader.
 - `stim_frame_sampler.cpp` / `.hpp` — the top-level kernel function.
-- `ap_uint_shim.hpp` — portable `ap_uint<N>` stand-in so all of the above
-  compiles with plain g++ (no Vitis install needed) for Tier 1/2 CI; swap
-  for real `<ap_int.h>` when Phase 3 needs actual HLS synthesis.
+  Deliberately at global scope rather than inside `namespace stim_u55c`
+  — see `stim_frame_sampler.hpp`'s comment for why (a Vitis HLS
+  cosimulation quirk with namespaced top functions).
+- `ap_uint.hpp` — selects real `<ap_int.h>` (real HLS synthesis,
+  `STIM_U55C_USE_XILINX_AP_INT`) or the portable `ap_uint_shim.hpp`
+  (plain g++, no Vitis install needed — Tier 1/2 CI and local testing).
+  Both expose the same unqualified `ap_uint<N>` surface, so no kernel
+  source changes between the two.
+- `hls/` — real `vitis_hls` C-synthesis and C/RTL cosimulation
+  (`run_hls.tcl`); results in `../docs/utilization.md`. Local-only, not
+  in CI (needs a Vitis install) — run via `make hls-synth` /
+  `make hls-cosim` in `../build/`.
 - `hls_testbench/` — one C-sim testbench per module, plus the end-to-end
-  Tier 2 comparison (`tb_stim_frame_sampler.cpp`).
+  Tier 2 comparison (`tb_stim_frame_sampler.cpp`, reused by `hls/` for
+  cosimulation).
 
 Layered/hazard-free instruction scheduling for II=1 (the project brief's
-section 3.1) is a Phase 3 concern: the kernel loop here is functionally
-correct regardless of instruction order (HLS just inserts stalls on a
-same-qubit hazard rather than corrupt anything), which is what Phase 2's
-gate — sw_emu-equivalent output bit-exact against the soft model — needs.
+section 3.1) is not implemented yet: `INSTRUCTION_LOOP` in
+`stim_frame_sampler.cpp` runs one instruction at a time, unpipelined
+(75-496 cycles/instruction depending on opcode). The kernel is
+functionally correct regardless — a same-qubit hazard just costs cycles,
+not correctness — which is what let Phase 2's Tier 2 gate and Phase 3's
+synthesis/cosimulation runs proceed without it, but it's real remaining
+work before the kernel is throughput-competitive.

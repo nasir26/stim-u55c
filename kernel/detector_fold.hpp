@@ -12,7 +12,7 @@
 // into anything the kernel measured earlier.
 #pragma once
 
-#include "ap_uint_shim.hpp"
+#include "ap_uint.hpp"
 #include "config.hpp"
 #include "instruction.hpp"
 

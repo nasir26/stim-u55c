@@ -13,7 +13,7 @@
 // docs/README.md.
 #pragma once
 
-#include "ap_uint_shim.hpp"
+#include "ap_uint.hpp"
 #include "config.hpp"
 
 namespace stim_u55c {

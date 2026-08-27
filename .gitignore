@@ -14,3 +14,8 @@ _x/
 *.link_summary
 *.compile_summary
 build/emconfig.json
+
+# vitis_hls project output (regenerate: vitis_hls -f kernel/hls/run_hls.tcl)
+kernel/hls/*_hls/
+kernel/hls/.Xil/
+kernel/hls/test_vectors/
