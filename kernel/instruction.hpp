@@ -59,4 +59,19 @@ inline int read_program(std::FILE *f, Instruction *out, int max_instructions) {
     return count;
 }
 
+// Reads up to `max_layers + 1` little-endian uint32 offsets from `f` (as
+// produced by Program.serialize_layer_offsets()) into `out`. Returns the
+// number read (num_layers + 1, including the trailing sentinel -- see
+// kernel/isa.py:Program.layer_offsets).
+inline int read_layer_offsets(std::FILE *f, uint32_t *out, int max_layers) {
+    int count = 0;
+    uint8_t word[4];
+    while (count < max_layers + 1 && std::fread(word, 1, 4, f) == 4) {
+        out[count] = static_cast<uint32_t>(word[0]) | (static_cast<uint32_t>(word[1]) << 8) |
+                     (static_cast<uint32_t>(word[2]) << 16) | (static_cast<uint32_t>(word[3]) << 24);
+        count++;
+    }
+    return count;
+}
+
 }  // namespace stim_u55c

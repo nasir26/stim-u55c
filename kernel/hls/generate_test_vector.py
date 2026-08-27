@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerates kernel/hls/test_vectors/instructions.bin, the fixed input
-run_hls.tcl's cosim step (STIM_U55C_HLS_COSIM=1) points cosim_design's
--argv at. Not committed (see .gitignore) since it's fully reproducible
-from this script; run it before a cosim run if the file is missing.
+"""Regenerates kernel/hls/test_vectors/{instructions,layer_offsets}.bin,
+the fixed inputs run_hls.tcl's cosim step (STIM_U55C_HLS_COSIM=1) points
+cosim_design's -argv at. Not committed (see .gitignore) since they're
+fully reproducible from this script; run it before a cosim run if the
+files are missing.
 """
 
 import sys
@@ -25,7 +26,8 @@ def main() -> None:
     out_dir = Path(__file__).resolve().parent / "test_vectors"
     out_dir.mkdir(exist_ok=True)
     (out_dir / "instructions.bin").write_bytes(program.serialize())
-    print(f"wrote {out_dir / 'instructions.bin'}: {len(program.instructions)} instructions, "
+    (out_dir / "layer_offsets.bin").write_bytes(program.serialize_layer_offsets())
+    print(f"wrote {out_dir}: {len(program.instructions)} instructions, {program.num_layers} layers, "
           f"{program.num_detectors} detectors")
 
 

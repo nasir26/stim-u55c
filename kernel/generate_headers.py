@@ -32,6 +32,7 @@ def generate_config_header() -> str:
             f"constexpr int NUM_QUBITS_MAX = {config.NUM_QUBITS_MAX};",
             f"constexpr int NUM_DETECTORS_MAX = {config.NUM_DETECTORS_MAX};",
             f"constexpr int NUM_OBSERVABLES_MAX = {config.NUM_OBSERVABLES_MAX};",
+            f"constexpr int NUM_LAYERS_MAX = {config.NUM_LAYERS_MAX};",
             f"constexpr int NUM_DETECTOR_BYTES = {config.NUM_DETECTOR_BYTES};",
             f"constexpr int NUM_OBSERVABLE_BYTES = {config.NUM_OBSERVABLE_BYTES};",
             f"constexpr int RECORD_SIZE = {isa.RECORD_SIZE};",

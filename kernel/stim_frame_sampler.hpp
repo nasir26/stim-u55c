@@ -17,6 +17,13 @@
 // with a reason to deviate from the namespace the rest of the kernel
 // uses -- see stim_frame_sampler.cpp. ap_uint<N> resolves here in both
 // real-ap_int.h and shim builds -- see ap_uint.hpp.
-void stim_frame_sampler(const stim_u55c::Instruction *instructions, int num_instructions, uint32_t seed_lo,
-                         uint32_t seed_hi, ap_uint<stim_u55c::SHOTS> detector_out[stim_u55c::NUM_DETECTORS_MAX],
+// `layer_offsets` has num_layers+1 entries (kernel/isa.py:Program.layer_offsets):
+// layer L is instructions[layer_offsets[L] .. layer_offsets[L+1]). Every
+// instruction within a layer is guaranteed qubit-disjoint from every
+// other instruction in that same layer (kernel/isa.py:_layer_and_reorder)
+// -- see stim_frame_sampler.cpp for what that guarantee is (and isn't)
+// used for.
+void stim_frame_sampler(const stim_u55c::Instruction *instructions, int num_instructions,
+                         const uint32_t *layer_offsets, int num_layers, uint32_t seed_lo, uint32_t seed_hi,
+                         ap_uint<stim_u55c::SHOTS> detector_out[stim_u55c::NUM_DETECTORS_MAX],
                          ap_uint<stim_u55c::SHOTS> observable_out[stim_u55c::NUM_OBSERVABLES_MAX]);

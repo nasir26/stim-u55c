@@ -49,6 +49,7 @@ import stim
 from stim_u55c.config import (
     NUM_DETECTOR_BYTES,
     NUM_DETECTORS_MAX,
+    NUM_LAYERS_MAX,
     NUM_OBSERVABLE_BYTES,
     NUM_OBSERVABLES_MAX,
     NUM_QUBITS_MAX,
@@ -134,6 +135,7 @@ class Instruction:
     prob_threshold: int = 0
     detector_mask: int = 0
     observable_mask: int = 0
+    layer: int = 0  # scheduling metadata only (see _layer_and_reorder); not serialized
 
     def pack(self) -> bytes:
         return _STRUCT.pack(
@@ -146,14 +148,29 @@ class Instruction:
         )
 
 
+_LAYER_OFFSET_STRUCT = struct.Struct("<I")
+
+
 @dataclass
 class Program:
     instructions: list[Instruction] = field(default_factory=list)
     num_detectors: int = 0
     num_observables: int = 0
+    # layer_offsets[L] is the start index (into `instructions`) of layer L;
+    # layer_offsets[-1] == len(instructions), a sentinel so the kernel's
+    # outer loop can compute every layer's length as offsets[L+1]-offsets[L]
+    # uniformly. See _layer_and_reorder for how these are computed.
+    layer_offsets: list[int] = field(default_factory=lambda: [0])
+
+    @property
+    def num_layers(self) -> int:
+        return len(self.layer_offsets) - 1
 
     def serialize(self) -> bytes:
         return b"".join(instr.pack() for instr in self.instructions)
+
+    def serialize_layer_offsets(self) -> bytes:
+        return b"".join(_LAYER_OFFSET_STRUCT.pack(o) for o in self.layer_offsets)
 
 
 def _prob_threshold(p: float) -> int:
@@ -265,7 +282,58 @@ def encode_circuit(circuit: stim.Circuit) -> Program:
     walk(circuit)
     emit(Opcode.END_OF_PROGRAM)
     program.num_detectors = state["num_detectors"]
+    _layer_and_reorder(program)
     return program
+
+
+def _layer_and_reorder(program: Program) -> None:
+    """Project brief section 3.1's "hard problem": partition the
+    instruction stream into layers of mutually qubit-disjoint
+    instructions, so the kernel can pipeline at II=1 within a layer with
+    no runtime hazard checking, draining only between layers.
+
+    Greedy, single pass over the program in its existing (compiler)
+    order: each instruction goes in the earliest layer after every layer
+    already used by any qubit it touches. This is always correct for
+    this kernel's dependency structure specifically, because an
+    instruction's effect here depends only on the frame state of its own
+    qubit(s) (see gate_ops.hpp / prng.hpp) -- there is no dependency to
+    preserve *except* same-qubit relative order, and tracking
+    last-layer-used per qubit is exactly what preserves that. A stable
+    sort by layer then reorders `program.instructions` in place; because
+    it's stable and per-qubit ordering is never violated across layers,
+    every qubit's own instruction sequence is untouched by the reorder,
+    which is what makes the reorder semantically invisible in the
+    output (softmodel/kernel_replay.py needs no changes to replay it
+    correctly -- it just iterates program.instructions in whichever
+    order they end up in).
+
+    This is a Python prototype of what host/scheduler.cpp will eventually
+    do for the real XRT runtime (Phase 4); the algorithm doesn't change,
+    only the language it's implemented in.
+    """
+    last_layer_used: dict[int, int] = {}
+    for instr in program.instructions:
+        touched = [q for q in (instr.qubit_a, instr.qubit_b) if q != NO_QUBIT]
+        if not touched:
+            instr.layer = 0
+            continue
+        layer = max((last_layer_used.get(q, -1) for q in touched), default=-1) + 1
+        instr.layer = layer
+        for q in touched:
+            last_layer_used[q] = layer
+
+    program.instructions.sort(key=lambda instr: instr.layer)  # stable: ties keep relative order
+
+    num_layers = (program.instructions[-1].layer + 1) if program.instructions else 0
+    if num_layers > NUM_LAYERS_MAX:
+        raise ValueError(f"program needs {num_layers} layers, exceeds NUM_LAYERS_MAX")
+
+    offsets = [0] * (num_layers + 1)
+    for position, instr in enumerate(program.instructions):
+        instr.index = position  # PRNG counter component: must match final position, see Instruction docstring
+        offsets[instr.layer + 1] = position + 1  # running "one past the last instruction of this layer so far"
+    program.layer_offsets = offsets
 
 
 def generate_opcodes_header() -> str:

@@ -9,6 +9,7 @@ constexpr int SHOTS = 64;
 constexpr int NUM_QUBITS_MAX = 128;
 constexpr int NUM_DETECTORS_MAX = 256;
 constexpr int NUM_OBSERVABLES_MAX = 8;
+constexpr int NUM_LAYERS_MAX = 1024;
 constexpr int NUM_DETECTOR_BYTES = 32;
 constexpr int NUM_OBSERVABLE_BYTES = 1;
 constexpr int RECORD_SIZE = 41;

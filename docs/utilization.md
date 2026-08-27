@@ -67,14 +67,80 @@ full `v++ -t hw_emu` build, which needs `host/` (XRT buffers, AXI/HBM DMA
 simulation) and doesn't exist until Phase 4. Reproduce with
 `make hls-cosim` (`build/Makefile`).
 
-**Not yet done:** `INSTRUCTION_LOOP` (the main per-instruction loop) is
-not pipelined -- iteration latency is 75-496 cycles depending on opcode,
-dominated by the 64-lane Philox draw on noise instructions. This is the
-"II=1 within layers" half of Phase 3's gate (project brief section 3.1):
-it needs a host-side scheduler that partitions the instruction stream
-into layers of mutually qubit-disjoint instructions, plus a kernel-side
-restructuring to pipeline within a layer and drain between them. The
-kernel is functionally correct regardless (a same-qubit hazard just costs
-cycles, not correctness), which is what let Phase 2's gate and this
-synthesis run proceed without it, but the gate as stated in the phased
-plan isn't fully met until that scheduler exists.
+## 2026-08-27 — instruction layering: implemented, verified, not yet exploited
+
+Project brief section 3.1's "hard problem" -- partition the instruction
+stream into layers of mutually qubit-disjoint instructions -- is now
+implemented (`kernel/isa.py:_layer_and_reorder`), runs as the last step
+of `encode_circuit`, and is verified: a Python-side check that no two
+instructions in the same layer share a qubit passes for all three test
+circuits, and `tests/test_kernel_tier2.py` confirms the reorder is
+bit-exact (reordering only ever changes each instruction's own PRNG
+counter value, never which qubit sees which effect in what relative
+order -- see that function's docstring for the full argument). Average
+instructions per layer, for the same circuits Phase 1/2 used:
+
+| Circuit | Instructions | Layers | Avg instrs/layer |
+|---|---:|---:|---:|
+| repetition_code d3 | 45 | 14 | 3.2 |
+| surface_code d3 | 344 | 47 | 7.3 |
+| surface_code d5 | 1,674 | 77 | 21.7 |
+
+(d=11/d=21, which the project brief also asks for here, need
+`NUM_QUBITS_MAX` raised past its current 128 -- d=11 alone needs 274
+qubits. That's a config change, not a redesign, but wasn't done this
+pass since it wasn't needed for the d=3/d=5 target this phase has been
+scoped to.) Parallelism improves with qubit count, as expected -- more
+qubits means more mutually-disjoint work available per layer.
+
+The kernel's top-level signature now takes `layer_offsets`/`num_layers`
+and processes instructions in a `LAYER_LOOP` / `INSTRUCTION_LOOP` nest
+matching that structure, but **the inner loop is not pipelined** in the
+version this repository ships. That was tried, measured, and reverted:
+
+**The experiment.** `#pragma HLS pipeline II=1` plus
+`#pragma HLS dependence variable=fs.x/fs.z inter false` on
+`INSTRUCTION_LOOP` (the dependence override is sound -- it's exactly the
+frame-store guarantee layering provides). Result: HLS could only reach
+**II=34**, not 1, and reaching even that pushed SLR-relative LUT usage to
+**131%** -- over the 70% gate -- while Fmax *dropped* slightly (382.44 ->
+351.25 MHz). A worse design on every axis that mattered for this phase's
+gate, despite being a genuine attempt at the thing the gate asks for.
+Per the project's own working rule ("if a fix requires an architectural
+change, stop and explain the tradeoff rather than working around it"),
+this was reverted rather than adopted or quietly left over-budget.
+
+**Why II=34, not 1 -- two causes, both reported by HLS itself, not
+guessed at:**
+1. The detector/observable accumulators in `DetectorFold` are a real
+   read-modify-write hazard layering-by-qubit doesn't touch: two
+   qubit-disjoint measurements in the same layer can still both
+   contribute to the *same* detector (common -- several ancillas' results
+   often feed one detector), so consecutive fold() calls can have a
+   genuine loop-carried dependency on the same accumulator words. HLS's
+   own dependence checker correctly refused to pipeline through this
+   (`HLS 200-880`, citing `detector_fold.hpp:47`) -- overriding it would
+   have been unsound, not just conservative, so it wasn't.
+2. `instructions` is fetched from external memory (m_axi) once per loop
+   iteration, and `Instruction`'s 32-byte `detector_mask` means each
+   fetch is several separate AXI transactions -- HLS reported this as its
+   own, independent II-limiting factor (`HLS 200-885`, "limited memory
+   ports").
+
+Fixing (1) needs a different detector-fold structure (e.g. splitting
+accumulators so same-layer measurements can't collide, or deferring the
+fold to a separate pass); fixing (2) needs the instruction stream staged
+on-chip (BRAM/URAM) rather than re-fetched from external memory every
+iteration, or a narrower per-iteration record. Both are real, scoped
+follow-up work, not attempted here.
+
+**What shipped instead:** the layering algorithm, the layer-aware kernel
+API, and the `LAYER_LOOP`/`INSTRUCTION_LOOP` structure, all with zero
+pipelining directives on the inner loop -- functionally and resource-wise
+equivalent to the pre-layering baseline above (Fmax unchanged at 382.44
+MHz; SLR LUT 50% vs. the baseline's 49%, FF 18% vs 20%, DSP 23% vs 31%,
+the small deltas being the extra loop nesting and the now-unused
+`layer_offsets` array, not pipelining cost). Nothing here makes the
+kernel faster yet, but the layering computation itself is done, correct,
+and ready for whoever picks up the pipelining problem with (1) and (2)
+solved first.

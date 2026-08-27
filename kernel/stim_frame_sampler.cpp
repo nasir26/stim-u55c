@@ -85,7 +85,8 @@ using namespace stim_u55c;
 // softmodel/kernel_replay.py's run_program docstring). This kernel never
 // computes or exposes a raw per-shot measurement value, only the
 // detector/observable accumulators below.
-void stim_frame_sampler(const Instruction *instructions, int num_instructions, uint32_t seed_lo, uint32_t seed_hi,
+void stim_frame_sampler(const Instruction *instructions, int num_instructions, const uint32_t *layer_offsets,
+                         int num_layers, uint32_t seed_lo, uint32_t seed_hi,
                          ap_uint<SHOTS> detector_out[NUM_DETECTORS_MAX],
                          ap_uint<SHOTS> observable_out[NUM_OBSERVABLES_MAX]) {
     // Logical AXI grouping only -- actual HBM bank assignment is a
@@ -94,6 +95,7 @@ void stim_frame_sampler(const Instruction *instructions, int num_instructions, u
     // brief's own connectivity.cfg example (instr_stream and
     // detector_out on separate HBM pseudo-channels).
 #pragma HLS INTERFACE m_axi port = instructions offset = slave bundle = gmem0 depth = 1048576
+#pragma HLS INTERFACE m_axi port = layer_offsets offset = slave bundle = gmem0 depth = 1025
 #pragma HLS INTERFACE m_axi port = detector_out offset = slave bundle = gmem1 depth = NUM_DETECTORS_MAX
 #pragma HLS INTERFACE m_axi port = observable_out offset = slave bundle = gmem1 depth = NUM_OBSERVABLES_MAX
     // No explicit bundle names on the s_axilite ports below: each m_axi
@@ -102,6 +104,7 @@ void stim_frame_sampler(const Instruction *instructions, int num_instructions, u
     // those auto-generated ones) to land in the same control bundle --
     // naming one explicitly here just fights that default.
 #pragma HLS INTERFACE s_axilite port = num_instructions
+#pragma HLS INTERFACE s_axilite port = num_layers
 #pragma HLS INTERFACE s_axilite port = seed_lo
 #pragma HLS INTERFACE s_axilite port = seed_hi
 #pragma HLS INTERFACE s_axilite port = return
@@ -111,8 +114,40 @@ void stim_frame_sampler(const Instruction *instructions, int num_instructions, u
     DetectorFold fold;
     fold.reset_all();
 
-INSTRUCTION_LOOP:
-    for (int i = 0; i < num_instructions; i++) {
+    // Every instruction within one layer touches a disjoint set of
+    // qubits (kernel/isa.py:_layer_and_reorder) -- that's the section
+    // 3.1 guarantee, and it's a guarantee about fs.x/fs.z specifically
+    // (each instruction's effect depends only on its own qubit(s)'
+    // frame state).
+    //
+    // A `#pragma HLS pipeline II=1` + `dependence variable=fs.x/fs.z
+    // inter false` on INSTRUCTION_LOOP was tried and measured, not
+    // adopted: HLS could only reach II=34 anyway (not 1), bottlenecked
+    // by two things layering-by-qubit doesn't address -- see below and
+    // docs/utilization.md for the full account -- and getting even that
+    // far pushed SLR-relative LUT usage to 131%, over the 70% gate, for
+    // a design that was otherwise comfortably under it. That's a real
+    // area/throughput tradeoff, not a bug to paper over, so the loop is
+    // left unpipelined here; layering and the layer_offsets plumbing
+    // stay (they're correct and free), ready for whoever picks the
+    // pipelining problem back up with more runway than this pass had.
+    //
+    // The two things that would need solving first: (1) the detector/
+    // observable accumulators in fold -- two qubit-disjoint measurements
+    // in the same layer can still both contribute to the *same*
+    // detector (very common -- several ancillas' measurements often
+    // feed one), a real read-modify-write hazard layering-by-qubit
+    // doesn't eliminate, and HLS's own dependence checker correctly
+    // refused to pipeline through it; (2) `instructions` is fetched from
+    // external memory (m_axi) per iteration, and Instruction's 32-byte
+    // detector_mask means each fetch is several AXI transactions, which
+    // HLS reported as its own II-limiting factor independent of (1).
+LAYER_LOOP:
+    for (int layer = 0; layer < num_layers; layer++) {
+        int layer_start = layer_offsets[layer];
+        int layer_end = layer_offsets[layer + 1];
+    INSTRUCTION_LOOP:
+        for (int i = layer_start; i < layer_end; i++) {
         const Instruction &instr = instructions[i];
         const int a = instr.qubit_a;
         const int b = instr.qubit_b;
@@ -220,7 +255,8 @@ INSTRUCTION_LOOP:
             default:
                 break;
         }
-    }
+        }  // INSTRUCTION_LOOP
+    }  // LAYER_LOOP
 
 WRITE_DETECTORS:
     for (int d = 0; d < NUM_DETECTORS_MAX; d++) {

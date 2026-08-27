@@ -65,12 +65,17 @@ def kernel_binary(tmp_path_factory) -> Path:
     return binary
 
 
-def _run_kernel(binary: Path, instructions_path: Path, seed: int, tmp_path: Path) -> tuple[np.ndarray, np.ndarray]:
+def _run_kernel(
+    binary: Path, instructions_path: Path, layer_offsets_path: Path, seed: int, tmp_path: Path
+) -> tuple[np.ndarray, np.ndarray]:
     output_path = tmp_path / "output.bin"
     seed_lo = seed & 0xFFFFFFFF
     seed_hi = (seed >> 32) & 0xFFFFFFFF
     subprocess.run(
-        [str(binary), str(instructions_path), str(seed_lo), str(seed_hi), str(output_path)],
+        [
+            str(binary), str(instructions_path), str(layer_offsets_path),
+            str(seed_lo), str(seed_hi), str(output_path),
+        ],
         check=True,
         capture_output=True,
     )
@@ -100,6 +105,8 @@ def test_tier2_kernel_bit_exact_vs_softmodel(name, kernel_binary, tmp_path):
 
     instructions_path = tmp_path / "instructions.bin"
     instructions_path.write_bytes(program.serialize())
+    layer_offsets_path = tmp_path / "layer_offsets.bin"
+    layer_offsets_path.write_bytes(program.serialize_layer_offsets())
 
     # zlib.crc32, not hash(): plain hash() on a str isn't reproducible
     # across processes (PYTHONHASHSEED), and while that wouldn't break
@@ -118,7 +125,9 @@ def test_tier2_kernel_bit_exact_vs_softmodel(name, kernel_binary, tmp_path):
         expected_observable_words, (0, NUM_OBSERVABLES_MAX - len(expected_observable_words))
     )
 
-    kernel_detector_words, kernel_observable_words = _run_kernel(kernel_binary, instructions_path, seed, tmp_path)
+    kernel_detector_words, kernel_observable_words = _run_kernel(
+        kernel_binary, instructions_path, layer_offsets_path, seed, tmp_path
+    )
 
     mismatched_detectors = np.nonzero(kernel_detector_words != expected_detector_words)[0]
     mismatched_observables = np.nonzero(kernel_observable_words != expected_observable_words)[0]

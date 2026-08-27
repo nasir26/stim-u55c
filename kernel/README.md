@@ -32,11 +32,20 @@ HLS C++ kernel sources and the ISA that drives them.
   Tier 2 comparison (`tb_stim_frame_sampler.cpp`, reused by `hls/` for
   cosimulation).
 
-Layered/hazard-free instruction scheduling for II=1 (the project brief's
-section 3.1) is not implemented yet: `INSTRUCTION_LOOP` in
-`stim_frame_sampler.cpp` runs one instruction at a time, unpipelined
-(75-496 cycles/instruction depending on opcode). The kernel is
-functionally correct regardless — a same-qubit hazard just costs cycles,
-not correctness — which is what let Phase 2's Tier 2 gate and Phase 3's
-synthesis/cosimulation runs proceed without it, but it's real remaining
-work before the kernel is throughput-competitive.
+Layered/hazard-free instruction scheduling (the project brief's section
+3.1) is implemented and verified: `isa.py:_layer_and_reorder` partitions
+the compiled instruction stream into layers of mutually qubit-disjoint
+instructions, and the kernel processes them via a `LAYER_LOOP` /
+`INSTRUCTION_LOOP` nest matching that structure. What it doesn't do yet
+is exploit that structure for pipelining — `INSTRUCTION_LOOP` carries no
+`#pragma HLS pipeline`. That was tried (`II=1` plus a `dependence`
+override on the frame store, which the layering guarantee makes sound)
+and reverted: HLS could only reach II=34 anyway, gated by two things
+layering-by-qubit doesn't address — a real hazard on `DetectorFold`'s
+accumulators, and per-instruction AXI fetch cost from `Instruction`'s
+32-byte `detector_mask` — and getting even that far pushed SLR LUT usage
+to 131%, over budget, for a worse Fmax too. Full account, including what
+solving those two would take, in `../docs/utilization.md`. The kernel is
+functionally correct either way — a same-qubit hazard just costs cycles,
+not correctness — which is what let Phase 2's Tier 2 gate and every
+synthesis/cosimulation run so far proceed without any of this.

@@ -5,8 +5,9 @@ sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
 **Status: Phase 3 in progress — real HLS synthesis and RTL cosimulation
-passing (Fmax 382 MHz, all resource classes under 70%); II=1 instruction
-layering not yet done. No hardware build yet.**
+passing (Fmax 382 MHz, all resource classes under 70%); instruction
+layering implemented and verified, pipelining it (II=1) tried, measured
+over-budget, and reverted rather than shipped. No hardware build yet.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -110,11 +111,23 @@ next phase, and nothing is pushed, until the current gate is met.
   them; merging them into one function let HLS's normal
   mutually-exclusive-branch sharing consolidate it (DSP 1920 -> 960, LUT
   361,185 -> 217,052) — see `docs/utilization.md` for the full account.
-  **Not done:** II=1 within instruction layers (project brief section
-  3.1) — `INSTRUCTION_LOOP` is currently unpipelined, correct but not
-  throughput-competitive; needs a host-side hazard-free scheduler this
-  phase deliberately deferred, same as Phase 2 did. This is what's left
-  before Phase 3's gate, as stated in the phased plan, is fully met.
+  **Instruction layering** (project brief section 3.1's "hard problem")
+  is implemented and verified: `kernel/isa.py` partitions the compiled
+  stream into layers of mutually qubit-disjoint instructions (avg. 3.2 /
+  7.3 / 21.7 instructions per layer for the rep-code/d3/d5 test
+  circuits), and the kernel now takes `layer_offsets` and processes a
+  matching `LAYER_LOOP`/`INSTRUCTION_LOOP` nest. **Pipelining it wasn't
+  adopted:** `#pragma HLS pipeline II=1` (sound here, given the layering
+  guarantee) only reached II=34 in practice, bottlenecked by two things
+  layering-by-qubit doesn't fix — a real hazard on the detector-fold
+  accumulators, and per-instruction external-memory fetch cost — and
+  getting even that far pushed SLR LUT usage to 131% (over the 70% gate)
+  while *lowering* Fmax. Measured, not guessed at, and reverted per the
+  project's own rule about not working around a gate that needs an
+  architectural fix — see `docs/utilization.md` for the full account and
+  what solving the two root causes would take. Resource/Fmax numbers
+  above are for the current (layered-but-unpipelined) kernel, unchanged
+  from the pre-layering baseline.
 - **Phase 4 — hardware bring-up, Mode A (bulk throughput).** Gate: all five
   validation tiers pass on real hardware; shots/sec benchmark vs. CPU Stim
   committed to `bench/results/`.

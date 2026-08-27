@@ -33,7 +33,7 @@ create_clock -period $CLOCK_PERIOD_NS -name default
 csynth_design
 
 if {[info exists ::env(STIM_U55C_HLS_COSIM)]} {
-    cosim_design -trace_level none -argv "$INVOCATION_DIR/test_vectors/instructions.bin 305419896 2271560481 $INVOCATION_DIR/test_vectors/output.bin"
+    cosim_design -trace_level none -argv "$INVOCATION_DIR/test_vectors/instructions.bin $INVOCATION_DIR/test_vectors/layer_offsets.bin 305419896 2271560481 $INVOCATION_DIR/test_vectors/output.bin"
 }
 
 exit
