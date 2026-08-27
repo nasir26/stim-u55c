@@ -19,3 +19,9 @@ build/emconfig.json
 kernel/hls/*_hls/
 kernel/hls/.Xil/
 kernel/hls/test_vectors/
+
+# v++ build output (regenerate: build/vpp_build.sh <sw_emu|hw_emu|hw>)
+build/sw_emu/
+build/hw_emu/
+build/hw/
+build/.run/

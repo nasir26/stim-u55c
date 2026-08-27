@@ -85,10 +85,10 @@ using namespace stim_u55c;
 // softmodel/kernel_replay.py's run_program docstring). This kernel never
 // computes or exposes a raw per-shot measurement value, only the
 // detector/observable accumulators below.
-void stim_frame_sampler(const Instruction *instructions, int num_instructions, const uint32_t *layer_offsets,
-                         int num_layers, uint32_t seed_lo, uint32_t seed_hi,
-                         ap_uint<SHOTS> detector_out[NUM_DETECTORS_MAX],
-                         ap_uint<SHOTS> observable_out[NUM_OBSERVABLES_MAX]) {
+extern "C" void stim_frame_sampler(const Instruction *instructions, int num_instructions,
+                                    const uint32_t *layer_offsets, int num_layers, uint32_t seed_lo, uint32_t seed_hi,
+                                    ap_uint<SHOTS> detector_out[NUM_DETECTORS_MAX],
+                                    ap_uint<SHOTS> observable_out[NUM_OBSERVABLES_MAX]) {
     // Logical AXI grouping only -- actual HBM bank assignment is a
     // connectivity.cfg concern (host/, Phase 4), generated rather than
     // handwritten per the project brief. gmem0/gmem1 split mirrors the

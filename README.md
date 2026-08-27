@@ -4,10 +4,12 @@ FPGA-accelerated, [Stim](https://github.com/quantumlib/Stim)-compatible bulk
 sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
-**Status: Phase 3 in progress — real HLS synthesis and RTL cosimulation
-passing (Fmax 382 MHz, all resource classes under 70%); instruction
-layering implemented and verified, pipelining it (II=1) tried, measured
-over-budget, and reverted rather than shipped. No hardware build yet.**
+**Status: Phase 3 gate met (Fmax 382 MHz, all resource classes under 70%,
+RTL cosimulation bit-exact); instruction layering implemented and
+verified, pipelining it (II=1) tried, measured over-budget, and reverted
+rather than shipped. Phase 4 underway: real v++ sw_emu build running
+end-to-end through XRT, bit-exact against the soft model. hw_emu and hw
+(real hardware) not yet attempted.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -54,7 +56,7 @@ detector error model (DEM)             bit-packed detector output          logic
 
 ```
 kernel/       HLS C++ kernel + ISA: frame store, gate ops, PRNG, detector fold, isa.py
-host/         XRT host runtime: scheduler, instruction encoder, Mode A/B runners (Phase 4+)
+host/         XRT host runtime: xrt_runner.cpp (Mode A); Mode B is Phase 5
 python/       Stim-API-compatible Python package (stim_u55c), incl. config.py
 softmodel/    Bit-exact Python reference model of the kernel, used in CI without hardware
 tests/        Validation harness (Tiers 1-5, see "Validation strategy" below)
@@ -96,7 +98,7 @@ next phase, and nothing is pushed, until the current gate is met.
   one Python list (`kernel/generate_headers.py`) so that class of bug is
   ruled out rather than re-reviewed. "sw_emu" here means this C-sim, not
   an actual `v++ -t sw_emu` run — that needs `host/`, which is Phase 4.
-- **Phase 3 — hw_emu + synthesis.** *(partially done)* Real `vitis_hls`
+- **Phase 3 — hw_emu + synthesis.** *(gate met)* Real `vitis_hls`
   C-synthesis of the kernel: estimated Fmax 382.44 MHz (target 300, floor
   250), all resource classes under 70% even at the tighter SLR-relative
   reading (LUT 49%, DSP 31%, FF 20%, BRAM 4%, URAM 0%) — see
@@ -128,9 +130,20 @@ next phase, and nothing is pushed, until the current gate is met.
   what solving the two root causes would take. Resource/Fmax numbers
   above are for the current (layered-but-unpipelined) kernel, unchanged
   from the pre-layering baseline.
-- **Phase 4 — hardware bring-up, Mode A (bulk throughput).** Gate: all five
-  validation tiers pass on real hardware; shots/sec benchmark vs. CPU Stim
-  committed to `bench/results/`.
+- **Phase 4 — hardware bring-up, Mode A (bulk throughput).** *(underway)*
+  `host/xrt_runner.cpp` (real XRT C++ API: device, kernel, buffers, run),
+  `build/generate_connectivity.py` (generated `connectivity.cfg`, 4 of the
+  U55C's 32 HBM pseudo-channels), `build/vpp_build.sh` +
+  `run_and_validate.sh`. **`sw_emu` confirmed working end-to-end**: real
+  `v++`-built `.xclbin`, run through the real XRT host runtime, bit-exact
+  against `softmodel/kernel_replay.py` — see `build/README.md` for the
+  two real bugs (a linker flag order mistake, and `stim_frame_sampler`
+  needing `extern "C"` linkage for sw_emu's dlsym-based kernel lookup,
+  not just the global scope cosimulation alone required) this surfaced.
+  `hw_emu` and `hw` not yet attempted — `hw` in particular is a real
+  Vivado build the project brief flags as potentially hours long. Gate:
+  all five validation tiers pass on real hardware; shots/sec benchmark
+  vs. CPU Stim committed to `bench/results/`.
 - **Phase 5 — Mode B (low-latency), sinter backend, docs.**
 
 ## Validation strategy
