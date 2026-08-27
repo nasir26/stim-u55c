@@ -4,7 +4,7 @@ FPGA-accelerated, [Stim](https://github.com/quantumlib/Stim)-compatible bulk
 sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
-**Status: Phase 0 (environment survey + repo skeleton). No kernel code yet.**
+**Status: Phase 1 (soft model) complete. No kernel code yet.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -54,7 +54,7 @@ kernel/       HLS C++ kernel: frame store, gate ops, PRNG, detector fold (Phase 
 host/         XRT host runtime: scheduler, instruction encoder, Mode A/B runners (Phase 2+)
 python/       Stim-API-compatible Python package (stim_u55c)
 softmodel/    Bit-exact Python reference model of the kernel, used in CI without hardware
-tests/        Validation harness (Tiers 1-5, see docs/validation.md once written)
+tests/        Validation harness (Tiers 1-5, see "Validation strategy" below)
 bench/        Benchmark scripts and results
 docs/         Architecture notes, utilization reports
 build/        v++ build flow: Makefile, connectivity.cfg, xrt.ini
@@ -65,13 +65,19 @@ build/        v++ build flow: Makefile, connectivity.cfg, xrt.ini
 Each phase has an explicit acceptance gate; work does not advance to the
 next phase, and nothing is pushed, until the current gate is met.
 
-- **Phase 0 — environment survey + skeleton.** *(current)* Repo skeleton,
+- **Phase 0 — environment survey + skeleton.** *(done)* Repo skeleton,
   LICENSE, NOTICE, CI wired to run against CPU Stim. Gate: CI green, repo
   public, no kernel code.
-- **Phase 1 — soft model.** `softmodel/reference_sampler.py` reproduces
-  Stim detector samples for a d=3 repetition code and a d=3 surface code.
-  Gate: Tier 1 (noiseless determinism), Tier 3 (single-fault vs. DEM), and
-  Tier 4 (statistical equivalence) pass in software only.
+- **Phase 1 — soft model.** *(done, current)* `softmodel/reference_sampler.py`
+  is a from-scratch Pauli frame interpreter over `stim.Circuit` (recursing
+  into REPEAT blocks rather than flattening them, so single-fault
+  injection can locate an exact instruction occurrence -- see its
+  docstring). Reproduces Stim detector samples for a d=3 repetition code
+  and a d=3 surface code (both memory bases). Gate: Tier 1 (noiseless
+  determinism), Tier 3 (440 DEM error mechanisms across both circuits,
+  every one matched exactly), and Tier 4 (10^7 shots per circuit vs. CPU
+  Stim, max |z| observed 2.6 against a 5-sigma bar) all pass in software
+  only -- see `tests/test_softmodel_validation.py`.
 - **Phase 2 — HLS kernel, sw_emu.** Frame store, gate ops, PRNG, detector
   fold, with per-module C-sim testbenches. Gate: sw_emu bit-exact against
   the soft model (Tier 2) for d=3 and d=5.
