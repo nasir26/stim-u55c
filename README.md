@@ -4,7 +4,7 @@ FPGA-accelerated, [Stim](https://github.com/quantumlib/Stim)-compatible bulk
 sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
-**Status: Phase 1 (soft model) complete. No kernel code yet.**
+**Status: Phase 2 (HLS kernel, C-sim) complete. No hardware build yet.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -50,9 +50,9 @@ detector error model (DEM)             bit-packed detector output          logic
 ## Repository layout
 
 ```
-kernel/       HLS C++ kernel: frame store, gate ops, PRNG, detector fold (Phase 2+)
-host/         XRT host runtime: scheduler, instruction encoder, Mode A/B runners (Phase 2+)
-python/       Stim-API-compatible Python package (stim_u55c)
+kernel/       HLS C++ kernel + ISA: frame store, gate ops, PRNG, detector fold, isa.py
+host/         XRT host runtime: scheduler, instruction encoder, Mode A/B runners (Phase 4+)
+python/       Stim-API-compatible Python package (stim_u55c), incl. config.py
 softmodel/    Bit-exact Python reference model of the kernel, used in CI without hardware
 tests/        Validation harness (Tiers 1-5, see "Validation strategy" below)
 bench/        Benchmark scripts and results
@@ -78,9 +78,21 @@ next phase, and nothing is pushed, until the current gate is met.
   every one matched exactly), and Tier 4 (10^7 shots per circuit vs. CPU
   Stim, max |z| observed 2.6 against a 5-sigma bar) all pass in software
   only -- see `tests/test_softmodel_validation.py`.
-- **Phase 2 — HLS kernel, sw_emu.** Frame store, gate ops, PRNG, detector
-  fold, with per-module C-sim testbenches. Gate: sw_emu bit-exact against
-  the soft model (Tier 2) for d=3 and d=5.
+- **Phase 2 — HLS kernel, sw_emu.** *(done)* `kernel/isa.py` compiles a
+  `stim.Circuit` to a flat instruction stream, un-broadcasting gates and
+  resolving all detector/observable folding at compile time (no runtime
+  measurement-history buffer -- see `detector_fold.hpp`'s docstring).
+  The kernel (`frame_store.hpp`, `gate_ops.hpp`, `prng.hpp` — Philox4x32-10,
+  `detector_fold.hpp`, `stim_frame_sampler.cpp`) compiles under plain g++
+  via a portable `ap_uint<N>` shim (`ap_uint_shim.hpp`), so this is CI,
+  not just local. Gate: C-sim output bit-exact against the soft model
+  (Tier 2) for a d=3 repetition code and d=3/d=5 surface codes — see
+  `tests/test_kernel_tier2.py`. One real bug caught in the process: a
+  hand-transcribed DEPOLARIZE2 combination table silently disagreed with
+  the Python side's actual enumeration order; both are now generated from
+  one Python list (`kernel/generate_headers.py`) so that class of bug is
+  ruled out rather than re-reviewed. "sw_emu" here means this C-sim, not
+  an actual `v++ -t sw_emu` run — that needs `host/`, which is Phase 4.
 - **Phase 3 — hw_emu + synthesis.** II=1 within instruction layers. Gate:
   hw_emu bit-exact, estimated Fmax >= 250 MHz, resource usage under 70% of
   any single class.
