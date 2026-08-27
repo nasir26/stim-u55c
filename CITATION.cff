@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: >-
+  If you use stim-u55c, please cite this repository as well as the
+  Stim and Sparse Blossom papers describing the algorithms it
+  reimplements and interoperates with.
+title: "stim-u55c: FPGA-accelerated stabilizer circuit sampling for Alveo U55C"
+type: software
+authors:
+  - family-names: Ali
+    given-names: Nasir
+    affiliation: C-DAC Noida
+repository-code: "https://github.com/nasir26/stim-u55c"
+license: Apache-2.0
+preferred-citation:
+  type: article
+  title: "stim-u55c: FPGA-accelerated stabilizer circuit sampling for Alveo U55C"
+  authors:
+    - family-names: Ali
+      given-names: Nasir
+      affiliation: C-DAC Noida
+references:
+  - type: article
+    title: "Stim: a fast stabilizer circuit simulator"
+    authors:
+      - family-names: Gidney
+        given-names: Craig
+    journal: Quantum
+    volume: 5
+    pages: 497
+    year: 2021
+    doi: 10.22331/q-2021-07-06-497
+  - type: article
+    title: >-
+      Sparse Blossom: correcting a million errors per core second with
+      minimum-weight matching
+    authors:
+      - family-names: Higgott
+        given-names: Oscar
+      - family-names: Gidney
+        given-names: Craig
+    year: 2023
+    identifiers:
+      - type: other
+        value: "arXiv:2303.15933"

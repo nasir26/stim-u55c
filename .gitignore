@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# v++ / Vitis build artifacts (Phase 2+)
+_x/
+.Xil/
+*.log
+*.jou
+*.xo
+*.xclbin
+*.xclbin.info
+*.link_summary
+*.compile_summary
+build/emconfig.json
