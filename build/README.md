@@ -44,17 +44,32 @@ Two real bugs getting sw_emu working, neither in the kernel logic itself
    the type system, so this didn't require touching how the kernel is
    called or its C++-typed parameters.
 
-**`hw` has been attempted** (`make hw`): a real Vivado synthesis +
-implementation run against `xcu55c-fsvh2892-2L-e`, completing in 3h 53m —
-confirming the project brief's "potentially hours long" warning exactly.
-Result: a valid `.xclbin`, excellent post-route resource usage (~2.6x
-*better* than HLS's own estimate — see `../docs/utilization.md`), but
-timing **not** closed (WNS -0.688ns, ~249 MHz achievable vs. this
-project's 250 MHz floor). The failing path is diagnosed, not vague:
-routing delay on a reset-fanout path into the Philox modulo-divider
-hardware, not a logic or resource problem. Not run on physical hardware
-— an unclosed-timing bitstream isn't a meaningful correctness check.
-Full account in `../docs/utilization.md`. Re-running `hw` (e.g. with a
-placement constraint on that reset net, or a lower, safely-closing clock
-target) costs another multi-hour build each time, so treat that as a
+**`hw` has been attempted three times** (`make hw`), ~10 hours of real
+Vivado synthesis + implementation total against `xcu55c-fsvh2892-2L-e` —
+confirming the project brief's "potentially hours long" warning every
+time. Each produced a valid `.xclbin` with excellent, consistent
+post-route resource usage (~2.6x *better* than HLS's own estimate — see
+`../docs/utilization.md`), but timing has not closed:
+
+1. 300 MHz target: WNS -0.688ns, ~249 MHz achievable.
+2. Retargeted to 250 MHz -- except the retarget didn't actually apply
+   (`--kernel_frequency` needs to be on both `v++ -c` and `-l`; it was
+   only on `-c`). Caught by checking the routed report's actual clock
+   period directly rather than trusting the intended change, which
+   turned out to matter: WNS got *worse* (-1.092ns), which was run-to-run
+   placement noise on an unchanged real target, not evidence the retarget
+   idea was wrong.
+3. Same 250 MHz target, fix applied for real (confirmed via the routed
+   report showing `period=4.000ns`): WNS improved to **-0.179ns** — a
+   ~74% cut in the violation, genuine progress, still short of closing.
+
+All three runs' failing paths point at the same region: the Philox
+noise-generator logic (`draw_noise`), heavily replicated across 64 shot
+lanes. Not run on physical hardware at any point — an unclosed-timing
+bitstream isn't a meaningful correctness check. Full account of all
+three attempts, including each failing path, in `../docs/utilization.md`.
+Closing the remaining ~0.18ns gap likely needs something more targeted
+than another clock-target guess (a placement constraint on the Philox
+block, or an extra `phys_opt_design` pass aimed at it) — each attempt
+costs another multi-hour build, so treat further iteration as a
 deliberate decision, not something to trigger incidentally.

@@ -254,3 +254,40 @@ placement variability on an unchanged target, not evidence that a lower
 target hurts. `vpp_build.sh` now passes `--kernel_frequency 250` to both
 `-c` and `-l`; a third `hw` attempt with the fix actually applied is the
 next real data point, not yet built as of this entry.
+
+## 2026-08-31 (final) — 250 MHz actually applied: much closer, still not closed
+
+Third `hw` attempt, 3h 14m 6s, with `--kernel_frequency 250` genuinely
+reaching the implementation stage this time -- confirmed directly in the
+routed report, `period=4.000ns` on the failing paths' clock, not the
+3.333ns both earlier attempts silently kept. Real result, not a wash:
+
+| | 300 MHz (1st) | 250 MHz, unapplied (2nd) | 250 MHz, applied (3rd) |
+|---|---:|---:|---:|
+| WNS | -0.688ns | -1.092ns | **-0.179ns** |
+| Failing endpoints | 26,495 | 40,302 | **10,707** |
+| Effective achievable | ~249 MHz | ~196 MHz | **~239 MHz** |
+
+Cutting the violation from -0.688ns to -0.179ns (a ~74% reduction) is
+genuine evidence the retarget helped, once it was actually wired up
+correctly. Resource usage is essentially unchanged from the first `hw`
+attempt (LUT 7.03% of the kernel's fabric budget, DSP 7.85%, REG 3.31%,
+BRAM 1.16%, URAM 0% -- comfortable, not the constraint).
+
+**Still not closed at 250 MHz**, and the failing path again points at
+the same region as both earlier attempts: the `draw_noise` Philox
+instance (this run: `mul_32ns_33ns_64_2_1_U5`, a multiplier; the first
+attempt's was a divider in the same block). Three attempts, three
+different specific nets, one consistent culprit -- the Philox draw
+logic, which is heavily replicated (64 shot lanes) and evidently dense
+enough locally to be the recurring routing bottleneck, independent of
+the exact clock target.
+
+**Where this stands:** not attempted further this pass. ~10 hours of
+real `hw` build time have gone into three attempts; the remaining gap is
+small (-0.179ns) but not proven to close with another parameter guess,
+and the next productive move is a more targeted one -- likely a
+placement constraint or extra `phys_opt_design` pass focused specifically
+on the Philox block, rather than another blind clock-target change. Not
+run on physical hardware, for the same reason as the first attempt: an
+unclosed-timing bitstream isn't a meaningful correctness check.
