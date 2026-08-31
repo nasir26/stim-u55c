@@ -25,3 +25,4 @@ build/sw_emu/
 build/hw_emu/
 build/hw/
 build/.run/
+build/.ipcache/

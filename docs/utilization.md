@@ -170,8 +170,63 @@ simulation itself was fast (16s of simulated time for the 45-instruction
 test vector) — the ~9 minutes is `v++`'s own compile/link, not the
 simulator being slow.
 
-**Not attempted: `hw`.** A real Vivado synthesis + implementation run
-against the physical part, which the project brief flags as potentially
-hours long -- categorically different from `hw_emu`'s RTL simulation
-above, not just a bigger version of it, and deliberately not triggered
-without that time cost being explicit up front.
+**Not attempted this pass: `hw`.** See below — it has been attempted
+since, with a real, honest result to report.
+
+## 2026-08-31 — `hw`: builds, real utilization excellent, timing NOT closed
+
+`make hw` (real Vivado synthesis + implementation against
+`xcu55c-fsvh2892-2L-e`) ran to completion: **3h 52m 59s**, confirming the
+project brief's "potentially hours long" warning exactly. It produced a
+valid `.xclbin`. Two real, opposite-direction surprises came out of
+actually measuring post-route numbers instead of trusting HLS's own
+estimates:
+
+**Resource usage: real numbers beat the HLS estimate, not just cleared
+it.** Post-route, `stim_frame_sampler` alone (not the platform shell)
+uses, against the fabric budget left after the shell's own reservation:
+
+| Resource | Used | Budget | % |
+|---|---:|---:|---:|
+| LUT | 83,843 | 1,181,758 | 7.09% |
+| REG | 101,402 | 2,441,808 | 4.15% |
+| DSP | 708 | 9,020 | 7.85% |
+| BRAM | 21 | 1,818 | 1.16% |
+| URAM | 0 | 960 | 0% |
+
+That LUT figure is ~2.6x *lower* than the 217,052 HLS's own
+`csynth_design` estimated back in the Phase 3 entry above. HLS's
+estimate is a conservative upper bound from its own RTL generation, not
+a substitute for what Vivado's real technology mapping and logic
+optimization actually produce — worth remembering before treating any
+`csynth` number as final. Whole-device numbers (platform shell included)
+are similarly comfortable: 15.78% LUT of the entire part.
+
+**Timing: NOT closed, and specifically enough to say why.** WNS
+(worst negative slack) = **-0.688ns** against the 3.333ns (300 MHz)
+requirement — 26,495 of 662,462 endpoints fail. Effective achievable
+clock is therefore ~1/(3.333+0.688)ns ≈ **249 MHz**, just under this
+project's own 250 MHz floor, not just short of the 300 MHz target. This
+is a real violation on real silicon, not an estimate falling short.
+
+The failing path is specific and worth recording exactly: source is
+`ap_rst_n_inv_reg_replica_5` (one of Vivado's automatic reset-fanout
+replicas), destination is deep inside `draw_noise`'s Philox instance —
+specifically the modulo-divider hardware `w1 % modulus` compiles to
+(`urem_32ns_4ns_8_36_seq_1`, a sequential divider). **97.8% of the 3.714ns
+data path delay is routing, not logic** (0.081ns of actual logic delay).
+This isn't a "too much logic" problem -- the resource table above rules
+that out -- it's a physical-placement problem: this one reset-replica's
+route to that specific divider instance is long enough to blow the
+budget on its own, most likely because the divider ended up placed far
+from where that reset replica landed.
+
+**Not run on real hardware.** A design with unclosed timing can behave
+unreliably on physical silicon in ways simulation can't show (metastability,
+intermittent failures) — running this bitstream on the card would not be
+a meaningful correctness check, so it wasn't attempted. Fixing this is
+scoped, not open-ended (a placement constraint on the reset-fanout
+network, or a lower, safely-closing clock target, are the two obvious
+next moves), but each attempt costs another multi-hour `hw` build, so
+it's flagged here for a deliberate decision on how to spend that time
+rather than re-run speculatively.

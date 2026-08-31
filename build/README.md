@@ -44,9 +44,17 @@ Two real bugs getting sw_emu working, neither in the kernel logic itself
    the type system, so this didn't require touching how the kernel is
    called or its C++-typed parameters.
 
-**`hw` is not yet attempted.** A real Vivado synthesis + implementation
-run against the physical part that the project brief flags as
-potentially hours long — categorically bigger than `hw_emu`'s RTL
-simulation above, not just a longer version of it. Never start it before
-hw_emu is green (it is, now), and treat the time commitment as worth
-flagging before running it, not something to trigger incidentally.
+**`hw` has been attempted** (`make hw`): a real Vivado synthesis +
+implementation run against `xcu55c-fsvh2892-2L-e`, completing in 3h 53m —
+confirming the project brief's "potentially hours long" warning exactly.
+Result: a valid `.xclbin`, excellent post-route resource usage (~2.6x
+*better* than HLS's own estimate — see `../docs/utilization.md`), but
+timing **not** closed (WNS -0.688ns, ~249 MHz achievable vs. this
+project's 250 MHz floor). The failing path is diagnosed, not vague:
+routing delay on a reset-fanout path into the Philox modulo-divider
+hardware, not a logic or resource problem. Not run on physical hardware
+— an unclosed-timing bitstream isn't a meaningful correctness check.
+Full account in `../docs/utilization.md`. Re-running `hw` (e.g. with a
+placement constraint on that reset net, or a lower, safely-closing clock
+target) costs another multi-hour build each time, so treat that as a
+deliberate decision, not something to trigger incidentally.

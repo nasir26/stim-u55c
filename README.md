@@ -4,14 +4,16 @@ FPGA-accelerated, [Stim](https://github.com/quantumlib/Stim)-compatible bulk
 sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
-**Status: Phase 3 gate met (Fmax 382 MHz, all resource classes under 70%,
-RTL cosimulation bit-exact); instruction layering implemented and
-verified, pipelining it (II=1) tried, measured over-budget, and reverted
-rather than shipped. Phase 4 underway: both `sw_emu` and `hw_emu` pass
-end-to-end through the real XRT stack, bit-exact against the soft model
--- `hw_emu` simulates the actual kernel RTL inside the full platform
-shell, the closest validation to real hardware short of the card itself.
-Real `hw` (physical card, hours-long Vivado build) not yet attempted.**
+**Status: Phase 3 gate met on HLS estimates (Fmax 382 MHz, all resource
+classes under 70%, RTL cosimulation bit-exact); instruction layering
+implemented and verified, pipelining it (II=1) tried, measured
+over-budget, and reverted. Phase 4: `sw_emu` and `hw_emu` both pass
+end-to-end through the real XRT stack, bit-exact against the soft model.
+Real `hw` build completed (~4 hours) with excellent post-route resource
+numbers (~2.6x better than the HLS estimate) but timing NOT closed
+(WNS -0.688ns, ~249 MHz achievable vs. the 250 MHz floor) — a specific,
+diagnosed routing issue on a reset-fanout path, not run on physical
+hardware as a result. See docs/utilization.md.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -147,12 +149,25 @@ next phase, and nothing is pushed, until the current gate is met.
   platform's actual PCIe/XDMA/HBM shell, driven by the same XRT host
   code — bit-exact on the first attempt, ~9 minutes of `v++` compile/link
   plus 16 seconds of actual simulated time. Full numbers in
-  `docs/utilization.md`. `hw` (the physical card) not yet attempted — a
-  real Vivado synthesis+implementation run the project brief flags as
-  potentially hours long, categorically bigger than `hw_emu`'s RTL
-  simulation above, not attempted without that time cost being explicit
-  first. Gate: all five validation tiers pass on real hardware; shots/sec
-  benchmark vs. CPU Stim committed to `bench/results/`.
+  `docs/utilization.md`. **`hw` attempted, mixed result.** A real Vivado
+  synthesis+implementation run against `xcu55c-fsvh2892-2L-e` completed
+  in 3h 53m, confirming the project brief's "hours long" warning exactly.
+  Post-route resource usage is excellent and, notably, ~2.6x *better*
+  than HLS's own `csynth` estimate (7.09% LUT of the kernel's fabric
+  budget, vs. the 217,052-LUT estimate Phase 3 reported) — a reminder
+  that an HLS estimate is a conservative upper bound, not a stand-in for
+  what real technology mapping produces. Timing did not close: WNS
+  -0.688ns at 300 MHz, ~249 MHz achievable, just under this project's own
+  250 MHz floor. The failing path is specific and diagnosed, not a vague
+  shortfall: 97.8% of it is routing delay on one reset-fanout replica's
+  path into the Philox modulo-divider hardware, not a logic-depth or
+  over-resource-use problem. Not run on physical hardware as a result —
+  an unclosed-timing bitstream isn't a meaningful correctness check, only
+  a risk of misleading one. Full account, including the exact failing
+  path, in `docs/utilization.md`. Gate: all five validation tiers pass on
+  real hardware; shots/sec benchmark vs. CPU Stim committed to
+  `bench/results/` — both still open, pending a build that actually
+  closes timing.
 - **Phase 5 — Mode B (low-latency), sinter backend, docs.**
 
 ## Validation strategy
