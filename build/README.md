@@ -19,10 +19,19 @@ v++ build flow.
   the real v++/XRT stack.
 - `xrt.ini` — minimal runtime logging config; no profiling by default.
 
-**sw_emu is confirmed working**: `make sw_emu && ./run_and_validate.sh
-sw_emu` builds and runs end-to-end, bit-exact against the soft model,
-through the real XRT host runtime — not just C-sim or HLS cosimulation.
-Two real bugs this surfaced, neither in the kernel logic itself:
+**sw_emu and hw_emu are both confirmed working**: `make <mode> &&
+./run_and_validate.sh <mode>` builds and runs end-to-end, bit-exact
+against the soft model, through the real XRT host runtime — not just
+C-sim or HLS cosimulation. `hw_emu` is the more meaningful of the two: it
+simulates the actual synthesized kernel RTL inside the platform's real
+PCIe/XDMA/HBM shell (XSIM), not an approximation of the kernel the way
+sw_emu's functional simulation is — the closest validation to real
+hardware short of the physical card, and it passed first try (~9 minutes
+of `v++` compile/link, 16 seconds of actual simulated time). Full numbers
+in `../docs/utilization.md`.
+
+Two real bugs getting sw_emu working, neither in the kernel logic itself
+(hw_emu needed no further fixes once these were in place):
 1. `vpp_build.sh`'s host-compile line had `-lxrt_coreutil` *before* the
    source file — GNU ld only resolves symbols against a library that
    appears after the object needing them, so linking failed until the
@@ -35,11 +44,9 @@ Two real bugs this surfaced, neither in the kernel logic itself:
    the type system, so this didn't require touching how the kernel is
    called or its C++-typed parameters.
 
-**hw_emu and hw are not yet attempted.** hw_emu needs full RTL simulation
-of the kernel *and* the platform's PCIe/XDMA/HBM shell (more than the
-kernel-only cosimulation in `kernel/hls/`, whose time cost is already
-documented in `../docs/utilization.md`), and `hw` is a real Vivado
-synthesis + implementation run that the project brief flags as
-potentially hours long — never start it before hw_emu is green, and treat
-the time commitment as worth flagging before running it, not something
-to trigger incidentally.
+**`hw` is not yet attempted.** A real Vivado synthesis + implementation
+run against the physical part that the project brief flags as
+potentially hours long — categorically bigger than `hw_emu`'s RTL
+simulation above, not just a longer version of it. Never start it before
+hw_emu is green (it is, now), and treat the time commitment as worth
+flagging before running it, not something to trigger incidentally.

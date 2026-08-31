@@ -1,9 +1,10 @@
 # Kernel utilization and timing
 
-Numbers below are `vitis_hls` C-synthesis (`csynth_design`) estimates for
-`stim_frame_sampler`, not a post-place-and-route Vivado implementation
-report — that requires a full `v++` build, which needs `host/`
-(Phase 4). Regenerate with:
+The resource/Fmax numbers below are `vitis_hls` C-synthesis
+(`csynth_design`) estimates for `stim_frame_sampler`, not a
+post-place-and-route Vivado implementation report -- that comes from a
+real `hw` build, not yet attempted (see the bottom of this file for why).
+Regenerate the synthesis numbers with:
 
 ```
 vitis_hls -f kernel/hls/run_hls.tcl
@@ -144,3 +145,33 @@ the small deltas being the extra loop nesting and the now-unused
 kernel faster yet, but the layering computation itself is done, correct,
 and ready for whoever picks up the pipelining problem with (1) and (2)
 solved first.
+
+## 2026-08-31 — Phase 4: sw_emu and hw_emu both passing end-to-end
+
+Both driven through the real stack: `v++ -c`/`-l` producing an actual
+`.xclbin`, `host/xrt_runner.cpp` (real XRT C++ API) loading it and
+running the kernel, output diffed against `softmodel/kernel_replay.py`
+bit-for-bit -- reproduce with `make sw_emu` / `make hw_emu` then
+`./run_and_validate.sh <mode>` in `build/`.
+
+| | sw_emu | hw_emu |
+|---|---|---|
+| `v++ -c` (compile) | a few seconds | 2m 9s |
+| `v++ -l` (link) | 13s | 7m 2s |
+| Run (bit-exact vs. soft model) | **PASS** | **PASS** |
+
+`hw_emu` is the meaningfully bigger step of the two: it simulates the
+*actual synthesized kernel RTL* inside the *full platform shell*
+(PCIe/XDMA/HBM controllers), via XSIM, driven by the real XRT runtime --
+not an approximation of the kernel the way sw_emu's functional
+simulation is. This is the closest validation to real hardware short of
+the physical card, and it passed on the first attempt. The RTL
+simulation itself was fast (16s of simulated time for the 45-instruction
+test vector) — the ~9 minutes is `v++`'s own compile/link, not the
+simulator being slow.
+
+**Not attempted: `hw`.** A real Vivado synthesis + implementation run
+against the physical part, which the project brief flags as potentially
+hours long -- categorically different from `hw_emu`'s RTL simulation
+above, not just a bigger version of it, and deliberately not triggered
+without that time cost being explicit up front.

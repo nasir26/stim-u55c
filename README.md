@@ -7,9 +7,11 @@ Xilinx/AMD Alveo U55C.
 **Status: Phase 3 gate met (Fmax 382 MHz, all resource classes under 70%,
 RTL cosimulation bit-exact); instruction layering implemented and
 verified, pipelining it (II=1) tried, measured over-budget, and reverted
-rather than shipped. Phase 4 underway: real v++ sw_emu build running
-end-to-end through XRT, bit-exact against the soft model. hw_emu and hw
-(real hardware) not yet attempted.**
+rather than shipped. Phase 4 underway: both `sw_emu` and `hw_emu` pass
+end-to-end through the real XRT stack, bit-exact against the soft model
+-- `hw_emu` simulates the actual kernel RTL inside the full platform
+shell, the closest validation to real hardware short of the card itself.
+Real `hw` (physical card, hours-long Vivado build) not yet attempted.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -140,10 +142,17 @@ next phase, and nothing is pushed, until the current gate is met.
   two real bugs (a linker flag order mistake, and `stim_frame_sampler`
   needing `extern "C"` linkage for sw_emu's dlsym-based kernel lookup,
   not just the global scope cosimulation alone required) this surfaced.
-  `hw_emu` and `hw` not yet attempted — `hw` in particular is a real
-  Vivado build the project brief flags as potentially hours long. Gate:
-  all five validation tiers pass on real hardware; shots/sec benchmark
-  vs. CPU Stim committed to `bench/results/`.
+  **`hw_emu` also confirmed working**, and it's the more meaningful of
+  the two: real synthesized kernel RTL, simulated (XSIM) inside the
+  platform's actual PCIe/XDMA/HBM shell, driven by the same XRT host
+  code — bit-exact on the first attempt, ~9 minutes of `v++` compile/link
+  plus 16 seconds of actual simulated time. Full numbers in
+  `docs/utilization.md`. `hw` (the physical card) not yet attempted — a
+  real Vivado synthesis+implementation run the project brief flags as
+  potentially hours long, categorically bigger than `hw_emu`'s RTL
+  simulation above, not attempted without that time cost being explicit
+  first. Gate: all five validation tiers pass on real hardware; shots/sec
+  benchmark vs. CPU Stim committed to `bench/results/`.
 - **Phase 5 — Mode B (low-latency), sinter backend, docs.**
 
 ## Validation strategy
