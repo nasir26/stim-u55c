@@ -48,8 +48,17 @@ v++ -c -t "$MODE" --platform "$PLATFORM" \
     "$KERNEL_DIR/stim_frame_sampler.cpp"
 
 echo "== [$MODE] v++ link (.xo -> .xclbin) =="
+# --kernel_frequency here too, not just on -c above: it's documented as
+# an "[impl]" flag, i.e. it's the link/implementation stage that actually
+# configures the platform's clock wizard for the kernel's clock domain.
+# The -c copy alone only affects HLS's own internal synthesis constraint
+# during kernel compilation -- discovered the hard way when a real hw
+# build "retargeted" to 250 MHz still showed a 3.333ns (300 MHz) period
+# on clk_kernel_00_unbuffered_net in the routed timing report; the
+# connectivity.cfg [hls] clock= line alone wasn't sufficient either.
 v++ -l -t "$MODE" --platform "$PLATFORM" \
     --config "$SCRIPT_DIR/connectivity.cfg" \
+    --kernel_frequency 250 \
     -o "$OUT_DIR/stim_frame_sampler.xclbin" \
     "$OUT_DIR/stim_frame_sampler.xo"
 

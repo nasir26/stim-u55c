@@ -230,3 +230,27 @@ network, or a lower, safely-closing clock target, are the two obvious
 next moves), but each attempt costs another multi-hour `hw` build, so
 it's flagged here for a deliberate decision on how to spend that time
 rather than re-run speculatively.
+
+## 2026-08-31 (later) — retargeting to 250 MHz didn't apply, and why
+
+Second `hw` attempt, intending to retarget the build to 250 MHz (this
+project's own floor) for more timing slack: 3h 17m 58s, WNS **-1.092ns**
+(worse than the 300 MHz attempt's -0.688ns), 40,302 failing endpoints
+(vs. 26,495). Looked like relaxing the clock target made timing *worse*
+-- until the routed timing report was checked directly: the failing
+path's clock still showed `period=3.333ns` (300 MHz), not the intended
+4.0ns (250 MHz). The retarget never actually applied.
+
+Root cause: `--kernel_frequency` had only been passed to `v++ -c`
+(kernel compile). That flag is documented as `[impl]` -- it's the
+link/implementation stage that configures the platform's clock wizard
+for the kernel's actual clock domain; the `-c` copy only affects HLS's
+own internal synthesis constraint during kernel compilation, and
+`connectivity.cfg`'s `[hls] clock=` line wasn't sufficient on its own
+either. Both `hw` attempts so far therefore targeted the *same* real
+300 MHz constraint regardless of what was intended for the second one --
+the WNS difference between them (-0.688 vs -1.092ns) is run-to-run
+placement variability on an unchanged target, not evidence that a lower
+target hurts. `vpp_build.sh` now passes `--kernel_frequency 250` to both
+`-c` and `-l`; a third `hw` attempt with the fix actually applied is the
+next real data point, not yet built as of this entry.
