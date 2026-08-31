@@ -32,10 +32,18 @@ echo "== [$MODE] regenerating connectivity.cfg =="
 python3 "$SCRIPT_DIR/generate_connectivity.py"
 
 echo "== [$MODE] v++ compile (kernel -> .xo) =="
+# 250 MHz, not the 300 MHz originally targeted: a real `hw` build at 300
+# missed timing closure by -0.688ns (WNS), ~249 MHz achievable -- see
+# ../docs/utilization.md's 2026-08-31 entry for the diagnosed root cause
+# (a routing-dominated reset-fanout path, not a logic/resource problem).
+# 250 MHz is this project's own stated floor, not an arbitrary retreat,
+# and gives Vivado 20% more slack than the 300 MHz attempt had to find a
+# route that actually closes. Must match generate_connectivity.py's
+# _CLOCK_HZ, which feeds the [hls] clock= line v++ -l reads.
 v++ -c -t "$MODE" --platform "$PLATFORM" \
     -k stim_frame_sampler \
     -I"$KERNEL_DIR" -D STIM_U55C_USE_XILINX_AP_INT \
-    --kernel_frequency 300 \
+    --kernel_frequency 250 \
     -o "$OUT_DIR/stim_frame_sampler.xo" \
     "$KERNEL_DIR/stim_frame_sampler.cpp"
 

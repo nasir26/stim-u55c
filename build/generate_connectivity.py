@@ -25,7 +25,13 @@ _ARGUMENT_BANKS = {
     "detector_out": 2,
     "observable_out": 3,
 }
-_CLOCK_HZ = 300_000_000  # matches kernel/hls/run_hls.tcl's CLOCK_PERIOD_NS target
+# 250 MHz, not the originally-targeted 300: a real `hw` build at 300 MHz
+# missed timing closure (WNS -0.688ns, ~249 MHz achievable) on a
+# routing-dominated path -- see ../docs/utilization.md's 2026-08-31
+# entry. 250 MHz is this project's own stated floor, giving Vivado 20%
+# more slack than the 300 MHz attempt had. Must match vpp_build.sh's
+# --kernel_frequency.
+_CLOCK_HZ = 250_000_000
 
 
 def generate() -> str:
