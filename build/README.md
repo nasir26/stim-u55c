@@ -44,12 +44,13 @@ Two real bugs getting sw_emu working, neither in the kernel logic itself
    the type system, so this didn't require touching how the kernel is
    called or its C++-typed parameters.
 
-**`hw` has been attempted three times** (`make hw`), ~10 hours of real
+**`hw` has been attempted four times** (`make hw`), ~15.5 hours of real
 Vivado synthesis + implementation total against `xcu55c-fsvh2892-2L-e` —
 confirming the project brief's "potentially hours long" warning every
-time. Each produced a valid `.xclbin` with excellent, consistent
-post-route resource usage (~2.6x *better* than HLS's own estimate — see
-`../docs/utilization.md`), but timing has not closed:
+time (3-5.5 hours per attempt). Each produced a valid `.xclbin` with
+excellent, consistent post-route resource usage (~2.6x *better* than
+HLS's own estimate — see `../docs/utilization.md`), and timing is
+converging fast but hasn't closed yet:
 
 1. 300 MHz target: WNS -0.688ns, ~249 MHz achievable.
 2. Retargeted to 250 MHz -- except the retarget didn't actually apply
@@ -60,16 +61,19 @@ post-route resource usage (~2.6x *better* than HLS's own estimate — see
    placement noise on an unchanged real target, not evidence the retarget
    idea was wrong.
 3. Same 250 MHz target, fix applied for real (confirmed via the routed
-   report showing `period=4.000ns`): WNS improved to **-0.179ns** — a
-   ~74% cut in the violation, genuine progress, still short of closing.
+   report showing `period=4.000ns`): WNS improved to -0.179ns — a ~74%
+   cut in the violation.
+4. `ExtraTimingOpt` placement plus `AggressiveExplore` phys_opt_design,
+   route_design, and an added post-route phys_opt_design pass, all
+   targeted at the recurring bottleneck: WNS improved to **-0.041ns** —
+   another ~77% cut, now within a fraction of a percent of closing.
 
-All three runs' failing paths point at the same region: the Philox
+All four runs' failing paths point at the same region: the Philox
 noise-generator logic (`draw_noise`), heavily replicated across 64 shot
-lanes. Not run on physical hardware at any point — an unclosed-timing
-bitstream isn't a meaningful correctness check. Full account of all
-three attempts, including each failing path, in `../docs/utilization.md`.
-Closing the remaining ~0.18ns gap likely needs something more targeted
-than another clock-target guess (a placement constraint on the Philox
-block, or an extra `phys_opt_design` pass aimed at it) — each attempt
-costs another multi-hour build, so treat further iteration as a
-deliberate decision, not something to trigger incidentally.
+lanes. A fifth attempt (`route_design` directive swapped to
+`NoTimingRelaxation`, everything else kept) is the next step. Not run on
+physical hardware at any point — an unclosed-timing bitstream isn't a
+meaningful correctness check. Full account of every attempt, including
+each failing path, in `../docs/utilization.md`. Each attempt costs
+another multi-hour build, so treat further iteration as a deliberate
+decision, not something to trigger incidentally.

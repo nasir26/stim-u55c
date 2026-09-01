@@ -62,11 +62,18 @@ def generate() -> str:
         # gap in a locally congested region, not exploring a fundamentally
         # different implementation. All standard Vivado directives, not a
         # hand-written constraint on instance names that change between
-        # runs.
+        # runs. That set of directives took WNS from -0.688ns to
+        # -0.179ns (250 MHz genuinely applied) to -0.041ns (this attempt,
+        # AggressiveExplore added on top) -- see ../docs/utilization.md.
+        # ROUTE_DESIGN switched to NoTimingRelaxation for the next
+        # attempt: it forces full timing effort on every net rather than
+        # relaxing on non-critical ones (AggressiveExplore's own
+        # tradeoff), aimed at closing what's now a very small residual
+        # gap rather than exploring more broadly.
         "prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE=ExtraTimingOpt",
         "prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=true",
         "prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE=AggressiveExplore",
-        "prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE=AggressiveExplore",
+        "prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE=NoTimingRelaxation",
         "prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=true",
         "prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE=AggressiveExplore",
         "",

@@ -9,14 +9,17 @@ classes under 70%, RTL cosimulation bit-exact); instruction layering
 implemented and verified, pipelining it (II=1) tried, measured
 over-budget, and reverted. Phase 4: `sw_emu` and `hw_emu` both pass
 end-to-end through the real XRT stack, bit-exact against the soft model.
-Three real `hw` builds attempted (~10 hours total): resource usage is
+Four real `hw` builds attempted (~15.5 hours total): resource usage is
 excellent and consistent throughout (~7% LUT, ~2.6x better than the HLS
-estimate); timing has not closed, improving from WNS -0.688ns (300 MHz
-target) to -0.179ns once a `--kernel_frequency` build-script bug was
-found and fixed (250 MHz genuinely applied, not just requested) — close,
-but not there, with all three attempts pointing at the same Philox
-noise-generator logic as the recurring bottleneck. Not run on physical
-hardware. See docs/utilization.md for the full, honest account.**
+estimate); timing has not closed but is converging fast, WNS improving
+-0.688ns -> -1.092ns (a build-script bug, not a real regression) ->
+-0.179ns (bug fixed, 250 MHz genuinely applied) -> **-0.041ns**
+(AggressiveExplore placement/routing directives) — within a fraction of
+a percent of the 250 MHz target, all four attempts pointing at the same
+Philox noise-generator logic as the recurring bottleneck. A fifth
+attempt (routing directive swapped to NoTimingRelaxation) is the next
+step. Not run on physical hardware. See docs/utilization.md for the
+full, honest account.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -152,26 +155,31 @@ next phase, and nothing is pushed, until the current gate is met.
   platform's actual PCIe/XDMA/HBM shell, driven by the same XRT host
   code — bit-exact on the first attempt, ~9 minutes of `v++` compile/link
   plus 16 seconds of actual simulated time. Full numbers in
-  `docs/utilization.md`. **`hw` attempted three times (~10 hours total),
-  timing not yet closed.** Real Vivado synthesis+implementation against
-  `xcu55c-fsvh2892-2L-e`, each run ~3-4 hours, confirming the project
-  brief's "hours long" warning exactly every time. Post-route resource
-  usage is excellent throughout and consistently ~2.6x *better* than
-  HLS's own `csynth` estimate (~7% LUT of the kernel's fabric budget vs.
-  the 217,052-LUT estimate Phase 3 reported) — a reminder that an HLS
-  estimate is a conservative upper bound, not a stand-in for what real
-  technology mapping produces. Timing: attempt 1 (300 MHz) missed by WNS
-  -0.688ns (~249 MHz achievable); attempt 2 tried retargeting to 250 MHz
-  but the fix didn't actually apply (a `--kernel_frequency` flag needed
-  on both `v++ -c` and `-l`, only had it on one) — confirmed by checking
-  the routed report's actual clock period, not just trusting the
-  intended change; attempt 3, with the fix genuinely applied, cut the
-  violation to WNS -0.179ns (~239 MHz achievable) — real progress, still
-  short. All three runs' failing paths point at the same region: the
+  `docs/utilization.md`. **`hw` attempted four times (~15.5 hours
+  total), converging but not yet closed.** Real Vivado
+  synthesis+implementation against `xcu55c-fsvh2892-2L-e`, confirming the
+  project brief's "hours long" warning every time (3-5.5 hours per
+  attempt). Post-route resource usage is excellent throughout and
+  consistently ~2.6x *better* than HLS's own `csynth` estimate (~7% LUT
+  of the kernel's fabric budget vs. the 217,052-LUT estimate Phase 3
+  reported) — a reminder that an HLS estimate is a conservative upper
+  bound, not a stand-in for what real technology mapping produces.
+  Timing: attempt 1 (300 MHz) missed by WNS -0.688ns (~249 MHz
+  achievable); attempt 2 tried retargeting to 250 MHz but the fix didn't
+  actually apply (a `--kernel_frequency` flag needed on both `v++ -c` and
+  `-l`, only had it on one) — confirmed by checking the routed report's
+  actual clock period, not just trusting the intended change; attempt 3,
+  fix genuinely applied, cut the violation to WNS -0.179ns; attempt 4,
+  `AggressiveExplore` placement/routing/post-route-physopt directives
+  targeted at the recurring bottleneck, cut it further to **WNS
+  -0.041ns** (~247 MHz achievable) — within a fraction of a percent of
+  closing. All four runs' failing paths point at the same region: the
   Philox noise-generator logic (`draw_noise`), heavily replicated across
-  64 shot lanes. Not run on physical hardware — an unclosed-timing
-  bitstream isn't a meaningful correctness check. Full account of all
-  three attempts, including each failing path, in `docs/utilization.md`.
+  64 shot lanes. A fifth attempt (routing directive swapped to
+  `NoTimingRelaxation`) is underway/next. Not run on physical hardware —
+  an unclosed-timing bitstream isn't a meaningful correctness check. Full
+  account of every attempt, including each failing path, in
+  `docs/utilization.md`.
   Gate: all five validation tiers pass on real hardware; shots/sec
   benchmark vs. CPU Stim committed to `bench/results/` — both still open,
   pending a build that actually closes timing.

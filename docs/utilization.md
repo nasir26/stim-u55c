@@ -291,3 +291,24 @@ placement constraint or extra `phys_opt_design` pass focused specifically
 on the Philox block, rather than another blind clock-target change. Not
 run on physical hardware, for the same reason as the first attempt: an
 unclosed-timing bitstream isn't a meaningful correctness check.
+
+## 2026-09-01 — fourth attempt: aggressive directives, WNS -0.041ns
+
+`ExtraTimingOpt` placement, `AggressiveExplore` phys_opt_design and
+route_design, plus an added post-route `phys_opt_design` pass (also
+`AggressiveExplore`) -- targeted specifically at the recurring Philox
+`draw_noise` bottleneck rather than another clock-target guess. 5h 32m
+46s (longer than the ~3h prior attempts, as expected -- "Aggressive"
+directives trade runtime for more exhaustive exploration).
+
+**WNS: -0.041ns**, down from -0.179ns -- another ~77% cut, and a ~94%
+cut from the first attempt's -0.688ns. Failing endpoints: 1,211 (down
+from 10,707). Effective achievable clock ~247.4 MHz, now within a
+fraction of a percent of the 250 MHz target. Resource usage: unchanged,
+still comfortable.
+
+Genuinely converging, not closed. Fifth attempt: `ROUTE_DESIGN`
+directive switched from `AggressiveExplore` to `NoTimingRelaxation`
+(forces full timing effort on every net rather than `AggressiveExplore`'s
+own relaxation tradeoff on non-critical paths), keeping everything else
+that worked. Not run on physical hardware.
