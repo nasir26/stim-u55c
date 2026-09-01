@@ -44,13 +44,13 @@ Two real bugs getting sw_emu working, neither in the kernel logic itself
    the type system, so this didn't require touching how the kernel is
    called or its C++-typed parameters.
 
-**`hw` has been attempted four times** (`make hw`), ~15.5 hours of real
-Vivado synthesis + implementation total against `xcu55c-fsvh2892-2L-e` —
-confirming the project brief's "potentially hours long" warning every
-time (3-5.5 hours per attempt). Each produced a valid `.xclbin` with
-excellent, consistent post-route resource usage (~2.6x *better* than
-HLS's own estimate — see `../docs/utilization.md`), and timing is
-converging fast but hasn't closed yet:
+**`hw` closed timing on the fifth attempt** (`make hw`), ~24 hours of
+real Vivado synthesis + implementation total against
+`xcu55c-fsvh2892-2L-e` — confirming the project brief's "potentially
+hours long" warning every time (3-5.5 hours per attempt). Every attempt
+produced a valid `.xclbin` with excellent, consistent post-route
+resource usage (~2.6x *better* than HLS's own estimate — see
+`../docs/utilization.md`):
 
 1. 300 MHz target: WNS -0.688ns, ~249 MHz achievable.
 2. Retargeted to 250 MHz -- except the retarget didn't actually apply
@@ -65,15 +65,26 @@ converging fast but hasn't closed yet:
    cut in the violation.
 4. `ExtraTimingOpt` placement plus `AggressiveExplore` phys_opt_design,
    route_design, and an added post-route phys_opt_design pass, all
-   targeted at the recurring bottleneck: WNS improved to **-0.041ns** —
-   another ~77% cut, now within a fraction of a percent of closing.
+   targeted at the recurring bottleneck: WNS improved to -0.041ns —
+   another ~77% cut.
+5. `route_design` swapped to `NoTimingRelaxation`, everything else kept:
+   **WNS 0.000ns, zero failing endpoints** — "All user specified timing
+   constraints are met."
 
-All four runs' failing paths point at the same region: the Philox
-noise-generator logic (`draw_noise`), heavily replicated across 64 shot
-lanes. A fifth attempt (`route_design` directive swapped to
-`NoTimingRelaxation`, everything else kept) is the next step. Not run on
-physical hardware at any point — an unclosed-timing bitstream isn't a
-meaningful correctness check. Full account of every attempt, including
-each failing path, in `../docs/utilization.md`. Each attempt costs
-another multi-hour build, so treat further iteration as a deliberate
-decision, not something to trigger incidentally.
+All five runs' failing paths (until the fifth closed them) pointed at
+the same region: the Philox noise-generator logic (`draw_noise`), heavily
+replicated across 64 shot lanes.
+
+**With timing genuinely closed, this bitstream was run on the physical
+card** — `./run_and_validate.sh hw`: bit-exact **PASS** against
+`softmodel/kernel_replay.py`. Extended by hand to the other two Tier 2
+circuits against the same built `.xclbin` (no rebuild needed): surface
+code d=3 and d=5, both **PASS**. Soft model == C-sim == HLS RTL
+cosimulation == `sw_emu` == `hw_emu` == real silicon, for all three
+circuits. Full account of every attempt, including each failing path
+along the way, in `../docs/utilization.md`.
+
+Not yet done: Tiers 1/3/4/5 specifically re-run *on hardware* (as
+opposed to their existing software-only passes since Phase 1) and the
+shots/sec benchmark vs. CPU Stim for `bench/results/` — Phase 4's gate
+asks for both, and they're real remaining scope.

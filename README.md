@@ -9,17 +9,21 @@ classes under 70%, RTL cosimulation bit-exact); instruction layering
 implemented and verified, pipelining it (II=1) tried, measured
 over-budget, and reverted. Phase 4: `sw_emu` and `hw_emu` both pass
 end-to-end through the real XRT stack, bit-exact against the soft model.
-Four real `hw` builds attempted (~15.5 hours total): resource usage is
-excellent and consistent throughout (~7% LUT, ~2.6x better than the HLS
-estimate); timing has not closed but is converging fast, WNS improving
--0.688ns -> -1.092ns (a build-script bug, not a real regression) ->
--0.179ns (bug fixed, 250 MHz genuinely applied) -> **-0.041ns**
-(AggressiveExplore placement/routing directives) — within a fraction of
-a percent of the 250 MHz target, all four attempts pointing at the same
-Philox noise-generator logic as the recurring bottleneck. A fifth
-attempt (routing directive swapped to NoTimingRelaxation) is the next
-step. Not run on physical hardware. See docs/utilization.md for the
-full, honest account.**
+**Timing closed on the fifth real `hw` build** (~24 hours of cumulative
+Vivado build time across five attempts: WNS -0.688ns -> -1.092ns (a
+build-script bug, not a real regression) -> -0.179ns (bug fixed, 250 MHz
+genuinely applied) -> -0.041ns (AggressiveExplore directives) ->
+**0.000ns, zero failing endpoints** (route_design switched to
+NoTimingRelaxation) — "All user specified timing constraints are met."
+Resource usage stayed excellent and consistent throughout, ~7% LUT,
+~2.6x better than the HLS estimate. **This bitstream was run on the
+physical Alveo U55C** — the first `hw` attempt safe to actually execute,
+since the prior four had unclosed timing. Bit-exact against
+`softmodel/kernel_replay.py` for all three Tier 2 circuits (repetition
+code d=3, surface code d=3 and d=5): soft model == C-sim == HLS RTL
+cosimulation == `sw_emu` == `hw_emu` == **real silicon**, closing the
+loop this project set out to test. See docs/utilization.md for the full
+account of all five attempts.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -155,34 +159,38 @@ next phase, and nothing is pushed, until the current gate is met.
   platform's actual PCIe/XDMA/HBM shell, driven by the same XRT host
   code — bit-exact on the first attempt, ~9 minutes of `v++` compile/link
   plus 16 seconds of actual simulated time. Full numbers in
-  `docs/utilization.md`. **`hw` attempted four times (~15.5 hours
-  total), converging but not yet closed.** Real Vivado
-  synthesis+implementation against `xcu55c-fsvh2892-2L-e`, confirming the
-  project brief's "hours long" warning every time (3-5.5 hours per
-  attempt). Post-route resource usage is excellent throughout and
-  consistently ~2.6x *better* than HLS's own `csynth` estimate (~7% LUT
-  of the kernel's fabric budget vs. the 217,052-LUT estimate Phase 3
-  reported) — a reminder that an HLS estimate is a conservative upper
-  bound, not a stand-in for what real technology mapping produces.
-  Timing: attempt 1 (300 MHz) missed by WNS -0.688ns (~249 MHz
-  achievable); attempt 2 tried retargeting to 250 MHz but the fix didn't
-  actually apply (a `--kernel_frequency` flag needed on both `v++ -c` and
-  `-l`, only had it on one) — confirmed by checking the routed report's
-  actual clock period, not just trusting the intended change; attempt 3,
-  fix genuinely applied, cut the violation to WNS -0.179ns; attempt 4,
-  `AggressiveExplore` placement/routing/post-route-physopt directives
-  targeted at the recurring bottleneck, cut it further to **WNS
-  -0.041ns** (~247 MHz achievable) — within a fraction of a percent of
-  closing. All four runs' failing paths point at the same region: the
-  Philox noise-generator logic (`draw_noise`), heavily replicated across
-  64 shot lanes. A fifth attempt (routing directive swapped to
-  `NoTimingRelaxation`) is underway/next. Not run on physical hardware —
-  an unclosed-timing bitstream isn't a meaningful correctness check. Full
-  account of every attempt, including each failing path, in
+  `docs/utilization.md`. **`hw` closed timing on the fifth attempt
+  (~24 hours of cumulative Vivado build time) and ran on the physical
+  card.** Five real synthesis+implementation runs against
+  `xcu55c-fsvh2892-2L-e`, confirming the project brief's "hours long"
+  warning every time (3-5.5 hours each). Post-route resource usage was
+  excellent and consistent throughout, ~2.6x *better* than HLS's own
+  `csynth` estimate (~7% LUT of the kernel's fabric budget vs. the
+  217,052-LUT estimate Phase 3 reported) — a reminder that an HLS
+  estimate is a conservative upper bound, not a stand-in for what real
+  technology mapping produces. Timing: attempt 1 (300 MHz) WNS -0.688ns;
+  attempt 2's "250 MHz" retarget didn't actually apply (`--kernel_frequency`
+  needed on both `v++ -c` and `-l`, only had it on one) — caught by
+  checking the routed report's actual clock period, not trusting the
+  intended change; attempt 3, fix applied for real, WNS -0.179ns;
+  attempt 4, `AggressiveExplore` placement/routing/post-route-physopt
+  directives targeted at the recurring Philox bottleneck, WNS -0.041ns;
+  attempt 5, `route_design` switched to `NoTimingRelaxation`: **WNS
+  0.000ns, zero failing endpoints** — "All user specified timing
+  constraints are met." With timing genuinely closed, `./run_and_validate.sh
+  hw` was run against the physical Alveo U55C: **bit-exact PASS** against
+  `softmodel/kernel_replay.py` for all three Tier 2 circuits (repetition
+  code d=3, surface code d=3 and d=5). Soft model == C-sim == HLS RTL
+  cosimulation == `sw_emu` == `hw_emu` == **real silicon** — the full
+  chain this project set out to validate. Full account of all five
+  attempts, including every failing path along the way, in
   `docs/utilization.md`.
   Gate: all five validation tiers pass on real hardware; shots/sec
-  benchmark vs. CPU Stim committed to `bench/results/` — both still open,
-  pending a build that actually closes timing.
+  benchmark vs. CPU Stim committed to `bench/results/` — what's
+  confirmed on hardware so far is Tier 2 specifically (across three
+  circuits); Tiers 1/3/4/5 re-run *on hardware* (vs. their existing
+  software-only passes since Phase 1) and the throughput benchmark are
+  real remaining scope, not yet attempted.
 - **Phase 5 — Mode B (low-latency), sinter backend, docs.**
 
 ## Validation strategy

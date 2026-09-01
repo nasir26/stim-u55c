@@ -312,3 +312,39 @@ directive switched from `AggressiveExplore` to `NoTimingRelaxation`
 (forces full timing effort on every net rather than `AggressiveExplore`'s
 own relaxation tradeoff on non-critical paths), keeping everything else
 that worked. Not run on physical hardware.
+
+## 2026-09-01 (later) — fifth attempt: timing CLOSED, and run on real hardware
+
+Fifth `hw` build, `NoTimingRelaxation` swapped in for `route_design`,
+4h 18m 57s. Result:
+
+```
+WNS(ns)  TNS(ns)  TNS Failing Endpoints  ...
+  0.000    0.000                      0  ...
+```
+
+`impl_1_hw_bb_locked_timing_summary_routed.rpt`: **"All user specified
+timing constraints are met."** Zero failing endpoints, WNS exactly
+0.000ns. Five attempts, ~24 hours of cumulative real Vivado build time,
+converging from -0.688ns -> (-1.092ns, a build bug) -> -0.179ns ->
+-0.041ns -> **0.000ns**. Resource usage held steady throughout at ~7%
+LUT of the kernel's fabric budget.
+
+**This bitstream was run on the physical card.** With timing genuinely
+closed, running it is a meaningful correctness check for the first time
+across all five `hw` attempts. `./run_and_validate.sh hw` against the
+same fixed test vector (`repetition_code:memory`, d=3) used throughout
+this document: **PASS**, bit-exact against `softmodel/kernel_replay.py`.
+Extended to the other two Tier 2 test circuits by hand (same seed,
+against the same built `.xclbin`, no rebuild needed since only the *run*
+differs): `surface_code:rotated_memory_z` d=3 (344 instructions, 24
+detectors) and d=5 (1,674 instructions, 120 detectors) — **both PASS**,
+bit-exact, on the real card.
+
+This closes the loop this project set out to test: soft model == C-sim
+(Tier 2) == HLS RTL cosimulation == `sw_emu` == `hw_emu` == **real
+Alveo U55C silicon**, for all three circuits Tier 2 has used since
+Phase 2. Not yet done: Tiers 1/3/4/5 specifically re-run *on hardware*
+(as opposed to the software-only forms already passing since Phase 1)
+and the shots/sec benchmark against CPU Stim that Phase 4's gate also
+asks for — real remaining scope, not claimed here.
