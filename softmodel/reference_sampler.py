@@ -403,6 +403,56 @@ def sample_single_fault(
     )
 
 
+def build_single_fault_circuit(
+    circuit: stim.Circuit,
+    *,
+    path: tuple[tuple[int, int], ...],
+    qubit_paulis: tuple[tuple[int, str], ...],
+) -> stim.Circuit:
+    """Tier 3 on real hardware: same fault-location semantics as
+    sample_single_fault (path/qubit_paulis come from the same
+    stim.CircuitErrorLocation fields -- see that function's docstring),
+    but builds an actual stim.Circuit with the fault as an explicit,
+    forced (p=1) noise instruction, instead of interpreting it directly.
+    Feed the result through kernel.isa.encode_circuit unmodified and run
+    it on the kernel (C-sim or real hardware) -- since the kernel has no
+    separate "fault injection mode", this is what lets Tier 3 exercise
+    the real kernel/hardware instead of only the soft model.
+
+    REPEAT blocks are unrolled into the output (matching
+    kernel.isa.encode_circuit's own convention) rather than preserved --
+    the output only needs the same *instruction order* as the original,
+    not the same syntactic structure.
+    """
+    out = stim.Circuit()
+    applied = False
+
+    def walk(body: stim.Circuit, current_path: tuple[tuple[int, int], ...], pending_iteration: int) -> None:
+        nonlocal applied
+        for offset, instruction in enumerate(body):
+            if isinstance(instruction, stim.CircuitRepeatBlock):
+                frame = (offset, pending_iteration)
+                for it in range(instruction.repeat_count):
+                    walk(instruction.body_copy(), current_path + (frame,), it)
+                continue
+
+            name = instruction.name
+            here = current_path + ((offset, pending_iteration),)
+
+            if name in _ALL_NOISE:
+                if here == path:
+                    for qubit, pauli in qubit_paulis:
+                        out.append(f"{pauli}_ERROR", [qubit], [1.0])
+                    applied = True
+                continue  # every other noise instruction is stripped, matching _strip_noise
+            out.append(instruction)
+
+    walk(circuit, (), 0)
+    if not applied:
+        raise AssertionError(f"fault injection path {path} was never reached while walking the circuit")
+    return out
+
+
 def noiseless_detectors_are_all_zero(circuit: stim.Circuit, *, shots: int = 256, seed: int = 0) -> bool:
     """Tier 1: with all noise stripped, every detector must read zero on every shot.
 

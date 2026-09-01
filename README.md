@@ -5,25 +5,20 @@ sampling for stabilizer quantum error-correction circuits, targeting the
 Xilinx/AMD Alveo U55C.
 
 **Status: Phase 3 gate met on HLS estimates (Fmax 382 MHz, all resource
-classes under 70%, RTL cosimulation bit-exact); instruction layering
-implemented and verified, pipelining it (II=1) tried, measured
-over-budget, and reverted. Phase 4: `sw_emu` and `hw_emu` both pass
-end-to-end through the real XRT stack, bit-exact against the soft model.
-**Timing closed on the fifth real `hw` build** (~24 hours of cumulative
-Vivado build time across five attempts: WNS -0.688ns -> -1.092ns (a
-build-script bug, not a real regression) -> -0.179ns (bug fixed, 250 MHz
-genuinely applied) -> -0.041ns (AggressiveExplore directives) ->
-**0.000ns, zero failing endpoints** (route_design switched to
-NoTimingRelaxation) — "All user specified timing constraints are met."
-Resource usage stayed excellent and consistent throughout, ~7% LUT,
-~2.6x better than the HLS estimate. **This bitstream was run on the
-physical Alveo U55C** — the first `hw` attempt safe to actually execute,
-since the prior four had unclosed timing. Bit-exact against
-`softmodel/kernel_replay.py` for all three Tier 2 circuits (repetition
-code d=3, surface code d=3 and d=5): soft model == C-sim == HLS RTL
-cosimulation == `sw_emu` == `hw_emu` == **real silicon**, closing the
-loop this project set out to test. See docs/utilization.md for the full
-account of all five attempts.**
+classes under 70%, RTL cosimulation bit-exact). Phase 4: timing closed on
+the fifth real `hw` build (~24 hours of cumulative Vivado build time,
+WNS 0.000ns — see docs/utilization.md) and run on the physical Alveo
+U55C. Four of Tier 1-5 now pass on real hardware, not just in software or
+emulation: Tier 1 (noiseless, all detectors zero), Tier 2 (bit-exact vs.
+the soft model, 3 circuits), Tier 3 (458/458 DEM error mechanisms), Tier
+4 (10,000,000 shots/circuit, max\|z\| 2.91 against a 5σ bar) — see
+bench/results/2026-09-01-hardware-validation.md. Tier 5 (logical error
+rate via PyMatching) not yet attempted — needs a larger `NUM_QUBITS_MAX`
+and a new hw build for d≥7. Mode A shots/sec benchmark against CPU Stim
+is committed and honest: CPU Stim is currently 5.6x-15.3x faster on these
+circuits, for two already-known, already-documented reasons (unpipelined
+instruction loop, small SHOTS=64 batch) — see
+bench/results/2026-09-01-mode-a-throughput.md.**
 See [Phased plan](#phased-plan) below for what that means concretely.
 
 ## What this is, and is not
@@ -185,12 +180,41 @@ next phase, and nothing is pushed, until the current gate is met.
   chain this project set out to validate. Full account of all five
   attempts, including every failing path along the way, in
   `docs/utilization.md`.
-  Gate: all five validation tiers pass on real hardware; shots/sec
-  benchmark vs. CPU Stim committed to `bench/results/` — what's
-  confirmed on hardware so far is Tier 2 specifically (across three
-  circuits); Tiers 1/3/4/5 re-run *on hardware* (vs. their existing
-  software-only passes since Phase 1) and the throughput benchmark are
-  real remaining scope, not yet attempted.
+  **Four of five validation tiers, and the benchmark, done.** With a
+  working `xrt_runner`, extending to the rest of the gate turned out to
+  be mostly composition, not new engineering: Tier 1 (noiseless, stripped
+  circuits through the same kernel — all detector/observable words
+  exactly zero, all 64 shot lanes, 3 circuits); Tier 3 (`softmodel/reference_sampler.py:build_single_fault_circuit`
+  turns a DEM error's location into an actual forced-fault `stim.Circuit`,
+  cross-checked against the already-validated interpreter-based
+  `sample_single_fault` before trusting it on hardware time — 458/458 DEM
+  mechanisms **PASS**, ~92s); Tier 4 (`host/xrt_tier4.cpp`, double-buffered
+  like the benchmark below but accumulating per-detector fired-counts
+  instead of discarding output — 10,000,000 shots/circuit against CPU
+  Stim, max\|z\| 1.64 / 2.91 / 2.64, **PASS**, ~6m 42s total). Full
+  account in `bench/results/2026-09-01-hardware-validation.md`.
+
+  The **shots/sec benchmark** (`host/xrt_bench.cpp`, `bench/run_benchmark.py`)
+  needed real engineering, not composition: a naive one-process-per-shot-batch
+  approach (`xrt_runner`) reloads the `.xclbin` every call, which dominates
+  runtime completely, so the benchmark tool loads the device once and
+  pipelines 2 `xrt::run` objects in flight (per the project brief's own
+  Mode A description) so host-side setup for run *i+1* overlaps run *i*'s
+  execution. Result, honestly reported: **CPU Stim is currently faster**
+  than this kernel on these circuits — 5.6x (repetition d=3) to 15.3x
+  (surface d=5). Two already-known, already-documented reasons, not new
+  findings: `INSTRUCTION_LOOP` is unpipelined (Phase 3's reverted II=1
+  attempt), and `SHOTS=64` is a small batch chosen for Phase 2
+  convenience, not throughput (`python/stim_u55c/config.py` already says
+  so). Full methodology and numbers in
+  `bench/results/2026-09-01-mode-a-throughput.md`.
+
+  **Tier 5 not attempted.** Needs `pymatching.Matching.from_detector_error_model`,
+  sweeps across d = 3, 5, 7, 9, 11, and — since the current kernel's
+  `NUM_QUBITS_MAX = 128` only covers d≤5 (d=11 alone needs 274 qubits) —
+  a config change and a *new* timing-closed `hw` build before it can run
+  at all. Real, scoped, separate work, given what closing timing on the
+  *current* build cost.
 - **Phase 5 — Mode B (low-latency), sinter backend, docs.**
 
 ## Validation strategy
