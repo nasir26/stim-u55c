@@ -51,8 +51,24 @@ def generate() -> str:
         f"clock={_CLOCK_HZ}:{_KERNEL_NAME}",
         "",
         "[vivado]",
-        "prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=true",
         "prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE=Explore",
+        # Three real hw builds (see ../docs/utilization.md) all failed
+        # timing in the same place regardless of clock target: routing
+        # delay within the Philox draw_noise logic (64x replicated),
+        # cut from WNS -0.688ns to -0.179ns once the clock retarget was
+        # actually applied correctly, but not closed. That's specifically
+        # what more aggressive placement/routing effort and a post-route
+        # physical-optimization pass are for -- closing a small residual
+        # gap in a locally congested region, not exploring a fundamentally
+        # different implementation. All standard Vivado directives, not a
+        # hand-written constraint on instance names that change between
+        # runs.
+        "prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE=ExtraTimingOpt",
+        "prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=true",
+        "prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE=AggressiveExplore",
+        "prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE=AggressiveExplore",
+        "prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=true",
+        "prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE=AggressiveExplore",
         "",
     ]
     return "\n".join(lines)
