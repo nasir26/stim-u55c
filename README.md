@@ -73,6 +73,7 @@ tests/        Validation harness (Tiers 1-5, see "Validation strategy" below)
 bench/        Benchmark scripts and results
 docs/         Architecture notes, utilization reports
 build/        v++ build flow: Makefile, connectivity.cfg, xrt.ini
+paper/        Submittable research paper (Journal of Supercomputing), Overleaf-ready
 ```
 
 ## Phased plan
