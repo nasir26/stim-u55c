@@ -6,11 +6,11 @@ Alveo U55C, not emulation. Same three circuits used throughout this
 project's validation since Phase 1/2 (repetition code d=3, surface code
 d=3 and d=5, plus surface code d=3 in the X basis for Tier 3).
 
-Reproduce: `bench/hw_tier3.py`, `bench/hw_tier4.py` (need a built
-`build/hw/` — see `build/README.md`). Tier 1/2 were run ad hoc via
-`build/hw/xrt_runner` on noiseless and normal instruction streams
+Reproduce: `bench/hw_tier3.py`, `bench/hw_tier4.py`, `bench/hw_tier5.py`
+(need a built `build/hw/` — see `build/README.md`). Tier 1/2 were run ad
+hoc via `build/hw/xrt_runner` on noiseless and normal instruction streams
 respectively (see commit history around 2026-09-01 for the exact
-commands); not (yet) wrapped into a committed script the way Tiers 3/4
+commands); not (yet) wrapped into a committed script the way Tiers 3/4/5
 are.
 
 ## Results
@@ -21,7 +21,7 @@ are.
 | 2 | Bit-exact vs. soft model | rep d3, surface d3, surface d5 | **PASS** — `docs/utilization.md`'s fifth-attempt entry |
 | 3 | Single-fault injection vs. DEM | rep d3, surface z d3, surface x d3 | **PASS** — 458/458 DEM error mechanisms, ~92s |
 | 4 | Statistical equivalence vs. CPU Stim | rep d3, surface d3, surface d5 | **PASS** — 10,000,000 shots/circuit, max\|z\| 1.64 / 2.91 / 2.64 (5σ bar), ~6m 42s total |
-| 5 | Logical error rate vs. Stim+PyMatching | — | **not attempted** |
+| 5 | Logical error rate vs. Stim+PyMatching | surface d3, surface d5 | **PASS** — 6 points (2 distances × 3 error rates), max\|z\| 1.59; d=7/9/11 not attempted (see `bench/results/2026-09-02-tier5-logical-error-rate.md`) |
 
 Tiers 1-4 above are the real-hardware counterparts of validation that
 already passed in software since Phase 1 (Tiers 1/3/4,
@@ -49,16 +49,21 @@ Before trusting this on ~92 seconds of real hardware time, it was
 cross-checked against `sample_single_fault` (the already-validated
 Phase 1 interpreter) for the same 458 DEM mechanisms: 0 disagreements.
 
-## Tier 5 (not attempted): what it needs
+## Tier 5
 
-Full Tier 5 needs `pymatching.Matching.from_detector_error_model`,
-sweeps across d = 3, 5, 7, 9, 11 (the current kernel's `NUM_QUBITS_MAX =
-128` covers d≤5 — d=11 alone needs 274 qubits, so this needs a config
-change *and* a new timing-closed `hw` build before it can run at all),
-multiple physical error rates per circuit, and enough shots per point
-for the resulting logical error rate curve to be statistically
-comparable against Stim+PyMatching's own curve. Real, scoped, separate
-work — not attempted this pass given the additional `NUM_QUBITS_MAX`
-rebuild it requires (another multi-hour `hw` build, per
-`docs/utilization.md`'s experience getting the *current* build to close
-timing).
+Done for d=3 and d=5 (the distances `NUM_QUBITS_MAX=128` supports without
+a rebuild): 6 points (2 distances × 3 physical error rates), all within
+a 5σ bar against CPU Stim+PyMatching, decoded with the identical
+matcher on both sides so this isolates syndrome correctness rather than
+decoder agreement. Full account, including the on-host b8 transpose this
+needed (kernel output is detector-major, PyMatching wants shot-major)
+and its own cross-check before trusting it on real hardware, in
+`bench/results/2026-09-02-tier5-logical-error-rate.md`.
+
+d = 7, 9, 11 not attempted: d=7 alone needs more qubits than
+`NUM_QUBITS_MAX = 128` supports (d=11 needs 274), so reaching them needs
+a config change and a fresh `v++` build — and per this document's own
+five-attempt, ~24-hour experience closing timing at the *current*,
+smaller qubit count, a real possibility of another multi-attempt timing
+closure at a larger, likely more resource-hungry design. Genuine, scoped,
+separate work.

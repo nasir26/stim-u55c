@@ -25,6 +25,11 @@ XRT host runtime.
   instead of discarding output, for Tier 4 (statistical equivalence) at
   real shot counts (10^7) without needing to move an unwieldy amount of
   raw per-shot data off the device. See `../bench/hw_tier4.py`.
+- `xrt_tier5.cpp` — same loop and pipelining again, but writes full
+  per-shot bit-packed syndrome data (not just counts), transposed on the
+  host from the kernel's detector-major output into PyMatching's
+  shot-major b8 convention -- Tier 4 only needed firing rates, Tier 5
+  needs actual syndromes to decode. See `../bench/hw_tier5.py`.
 - Mode B (low-latency, polled `xrt::run::state()`, host-memory bridge) is
   a separate runtime — Phase 5, not written yet.
 - `scheduler.cpp` / `stim_bridge.cpp` from the original repo layout

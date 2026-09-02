@@ -8,14 +8,15 @@ Xilinx/AMD Alveo U55C.
 classes under 70%, RTL cosimulation bit-exact). Phase 4: timing closed on
 the fifth real `hw` build (~24 hours of cumulative Vivado build time,
 WNS 0.000ns — see docs/utilization.md) and run on the physical Alveo
-U55C. Four of Tier 1-5 now pass on real hardware, not just in software or
-emulation: Tier 1 (noiseless, all detectors zero), Tier 2 (bit-exact vs.
-the soft model, 3 circuits), Tier 3 (458/458 DEM error mechanisms), Tier
-4 (10,000,000 shots/circuit, max\|z\| 2.91 against a 5σ bar) — see
-bench/results/2026-09-01-hardware-validation.md. Tier 5 (logical error
-rate via PyMatching) not yet attempted — needs a larger `NUM_QUBITS_MAX`
-and a new hw build for d≥7. Mode A shots/sec benchmark against CPU Stim
-is committed and honest: CPU Stim is currently 5.6x-15.3x faster on these
+U55C. All five validation tiers now pass on real hardware, not just in
+software or emulation: Tier 1 (noiseless, all detectors zero), Tier 2
+(bit-exact vs. the soft model, 3 circuits), Tier 3 (458/458 DEM error
+mechanisms), Tier 4 (10,000,000 shots/circuit, max\|z\| 2.91 against a 5σ
+bar), Tier 5 (logical error rate via PyMatching, surface code d=3/d=5,
+max\|z\| 1.59) — see bench/results/2026-09-01-hardware-validation.md.
+d=7/9/11 for Tier 5 need a larger `NUM_QUBITS_MAX` and a new `hw` build,
+not yet attempted. Mode A shots/sec benchmark against CPU Stim is
+committed and honest: CPU Stim is currently 5.6x-15.3x faster on these
 circuits, for two already-known, already-documented reasons (unpipelined
 instruction loop, small SHOTS=64 batch) — see
 bench/results/2026-09-01-mode-a-throughput.md.**
@@ -180,19 +181,40 @@ next phase, and nothing is pushed, until the current gate is met.
   chain this project set out to validate. Full account of all five
   attempts, including every failing path along the way, in
   `docs/utilization.md`.
-  **Four of five validation tiers, and the benchmark, done.** With a
-  working `xrt_runner`, extending to the rest of the gate turned out to
-  be mostly composition, not new engineering: Tier 1 (noiseless, stripped
-  circuits through the same kernel — all detector/observable words
-  exactly zero, all 64 shot lanes, 3 circuits); Tier 3 (`softmodel/reference_sampler.py:build_single_fault_circuit`
+  **All five validation tiers pass on real hardware.** With a working
+  `xrt_runner`, extending to Tiers 1/3/4 turned out to be mostly
+  composition, not new engineering: Tier 1 (noiseless, stripped circuits
+  through the same kernel — all detector/observable words exactly zero,
+  all 64 shot lanes, 3 circuits); Tier 3 (`softmodel/reference_sampler.py:build_single_fault_circuit`
   turns a DEM error's location into an actual forced-fault `stim.Circuit`,
   cross-checked against the already-validated interpreter-based
   `sample_single_fault` before trusting it on hardware time — 458/458 DEM
   mechanisms **PASS**, ~92s); Tier 4 (`host/xrt_tier4.cpp`, double-buffered
   like the benchmark below but accumulating per-detector fired-counts
   instead of discarding output — 10,000,000 shots/circuit against CPU
-  Stim, max\|z\| 1.64 / 2.91 / 2.64, **PASS**, ~6m 42s total). Full
-  account in `bench/results/2026-09-01-hardware-validation.md`.
+  Stim, max\|z\| 1.64 / 2.91 / 2.64, **PASS**, ~6m 42s total).
+
+  **Tier 5** (`host/xrt_tier5.cpp`, `bench/hw_tier5.py`) needed one more
+  piece of real engineering: the kernel's output is detector-major, but
+  PyMatching's `decode_batch` wants shot-major bit-packed syndromes
+  (Stim's own b8 convention) — transposed on the host per batch, cheap
+  next to the kernel launch itself, and cross-checked against the
+  independently-validated Tier 4 tool's aggregate counts before trusting
+  it. Surface code d=3 and d=5 (the distances `NUM_QUBITS_MAX=128`
+  covers), 3 physical error rates each, decoded with the identical
+  PyMatching matcher on both the FPGA's real syndromes and CPU-Stim's:
+  **PASS**, max\|z\| 1.59, ~2m 21s total — and the logical error rates
+  themselves show the right qualitative behavior (d=5 beats d=3 below
+  the apparent threshold, loses above it) without that being targeted.
+  d = 7, 9, 11 not attempted — d=7 alone needs more qubits than
+  `NUM_QUBITS_MAX = 128` supports, so reaching them needs a config change
+  and a fresh, likely multi-attempt timing closure (per the five-attempt,
+  ~24-hour experience closing timing at the *current*, smaller design) —
+  real, scoped, separate work.
+
+  Full account of all five tiers in
+  `bench/results/2026-09-01-hardware-validation.md` and
+  `bench/results/2026-09-02-tier5-logical-error-rate.md`.
 
   The **shots/sec benchmark** (`host/xrt_bench.cpp`, `bench/run_benchmark.py`)
   needed real engineering, not composition: a naive one-process-per-shot-batch
@@ -209,12 +231,10 @@ next phase, and nothing is pushed, until the current gate is met.
   so). Full methodology and numbers in
   `bench/results/2026-09-01-mode-a-throughput.md`.
 
-  **Tier 5 not attempted.** Needs `pymatching.Matching.from_detector_error_model`,
-  sweeps across d = 3, 5, 7, 9, 11, and — since the current kernel's
-  `NUM_QUBITS_MAX = 128` only covers d≤5 (d=11 alone needs 274 qubits) —
-  a config change and a *new* timing-closed `hw` build before it can run
-  at all. Real, scoped, separate work, given what closing timing on the
-  *current* build cost.
+  Gate: all five validation tiers pass on real hardware (**done**);
+  shots/sec benchmark vs. CPU Stim committed to `bench/results/`
+  (**done**, honestly — CPU currently wins). d=7/9/11 for Tier 5 remain
+  open, needing the `NUM_QUBITS_MAX`/rebuild work described above.
 - **Phase 5 — Mode B (low-latency), sinter backend, docs.**
 
 ## Validation strategy
